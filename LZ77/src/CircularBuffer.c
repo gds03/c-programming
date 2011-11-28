@@ -82,8 +82,12 @@ void putChar(PRingBufferChar buffer, char theChar)
 	// 
 	incrementPtr(buffer, buffer->endTw)
 
+
+	//
+	// When finish pass the boundaries, the buffer is circular
+	// so we need to advance start pointer (TextWindow is the characters between start and endTw)
+	// 
 	if(buffer->circular) {
 		incrementPtr(buffer, buffer->start)
 	}
-
 }

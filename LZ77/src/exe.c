@@ -5,6 +5,12 @@
 #include "CircularBuffer.h"
 
 
+
+
+#define PAK_EXTENSION ".pak\0"
+#define PAK_LENGTH 5
+
+
 //
 // Tests
 // 
@@ -64,7 +70,7 @@ copyCharsAddPakExtension(
 
 	// 
 	// Add pak extension
-	strcpy(destination, ".pak\0");
+	strcpy(destination, PAK_EXTENSION);
 }
 
 boolean
@@ -89,8 +95,8 @@ getDestinationFromSourceFilename(
 		// File without extension
 		// 
 		copyTo = sourceLen;
-		destLen = sourceLen + 5;						// Name of the file plus .pak\0
-		originExtension = NULL;							// Tells that source file haven't extension!	
+		destLen = sourceLen + PAK_LENGTH;						// Name of the file plus .pak\0
+		originExtension = NULL;									// Tells that source file haven't extension!	
 	}
 	else {
 
@@ -105,7 +111,7 @@ getDestinationFromSourceFilename(
 		//
 
 		copyTo = sourceLen - originExtLen;
-		destLen = copyTo + 5;		
+		destLen = copyTo + PAK_LENGTH;		
 	}
 
 	//
@@ -121,7 +127,11 @@ getDestinationFromSourceFilename(
 	// 
 	destination = fopen(destFilename, "wb");
 
-	free(destFilename);									// Cleanup memory (we just need the file handle)
+	//
+	// We don't need destination filename after this instruction, so we can free the memory!
+	// 
+	free(destFilename);		
+
 
 	if(destination == NULL) {
 		free(originExtension);

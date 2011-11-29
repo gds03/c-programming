@@ -22,8 +22,11 @@ void deleteInstance(__in PRingBufferChar buffer)
 }
 
 
-void fillLookahead(__in PRingBufferChar buffer, __in char theChar)
-{
+void 
+fillLookahead(
+	__in PRingBufferChar buffer, 
+	__in char theChar
+) {
 	_ASSERTE(buffer->lookahead_size < lookahead_dim);
 
 	// 
@@ -42,8 +45,11 @@ void fillLookahead(__in PRingBufferChar buffer, __in char theChar)
 	buffer->lookahead_size++;
 }
 
-boolean decrementLookahead(__in PRingBufferChar buffer, __in int units)
-{
+boolean 
+decrementLookahead(
+	__in PRingBufferChar buffer,
+	__in int units
+) {
 	_ASSERTE(buffer->lookahead_size - units >= 0);
 
 	while(units-- > 0 && buffer->endTw != buffer->finish)
@@ -60,8 +66,11 @@ boolean decrementLookahead(__in PRingBufferChar buffer, __in int units)
 	return (boolean)(buffer->endTw != buffer->finish);
 }
 
-void putChar(__in PRingBufferChar buffer, __in char theChar)
-{
+void 
+putChar(
+	__in PRingBufferChar buffer, 
+	__in char theChar
+) {
 	// 
 	// Set char on finish position
 	//

@@ -1,6 +1,5 @@
 #include <stdio.h>
 
-
 #define buffer_dim 16
 #define lookahead_dim 4
 
@@ -36,21 +35,33 @@ void deleteInstance(__in PRingBufferChar buffer);
 // Tipically, this method is called at first phase, that is,
 // when the lookahead is empty.
 //
-void fillLookahead(__in PRingBufferChar buffer, __in char theChar);
+void
+fillLookahead(
+	__in PRingBufferChar buffer, 
+	__in char theChar
+);
 
 //
 // Use thid method to decrement the lookahead.
 // Tipically, this method is called once you not have any character
 // to compress - decrementing the lookahead
 // 
-boolean decrementLookahead(__in PRingBufferChar buffer, __in int units);
+boolean 
+decrementLookahead(
+	__in PRingBufferChar buffer, 
+	__in int units
+);
 
 //
 // Use this method to put a char in a circular manner on a ringbuffer.
 // Internally, this method increments finish and endTW (slide the lookahead)
 // one unit by each call.
 // 
-void putChar(__in PRingBufferChar buffer, __in char theChar);
+void
+putChar(
+	__in PRingBufferChar buffer,
+	__in char theChar
+);
 
 
 

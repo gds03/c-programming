@@ -10,6 +10,8 @@
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
 
+#define BUFFER_DIM 4
+
 
 //
 // Tests
@@ -181,16 +183,172 @@ tryInitialize(
 
 	if(!getDestinationFromSourceFilename(sourceFilename, destination, originExtension)) {
 		fprintf(stderr, "\n Error while creating compressed file");
-		return;
+		return FALSE;
 	}
 
+	return TRUE;
+}
+
+
+
+char* 
+searchItMax(
+	__in PRingBufferChar buffer,
+	__out int* occurrences
+) {
+	char* itMax = NULL;		// Pointer to the best phrase on dictionary
+	int itMaxOccurrences = 0;
+
+	char* match;
+	int	  matchOccurrences = 0;
+
+	int twIdx = 0;			// Used to know the distance 
+	
+
+	char* twPtr = buffer->start;
+	char* lhPtr = buffer->endTw;
+
+	boolean stop = FALSE;
+
 	//
-	// If we get here we have access to 2 files in order to apply to our algorithm.
+	// Search lookahead on text window
 	// 
+
+	while(!stop && twPtr != buffer->endTw) 
+	{		
+		if(*twPtr == *lhPtr) {
+
+			//
+			// First character of lookahead word match
+			// 
+
+			match = twPtr;
+
+			do {
+				matchOccurrences++;
+
+				if(twPtr == buffer->endTw)
+					stop = TRUE;
+
+				incrementPtr(buffer, twPtr);
+				incrementPtr(buffer, lhPtr);
+
+			} while(matchOccurrences <= lookahead_dim && *twPtr == *lhPtr);
+
+			//
+			// Establish the higher match here..
+			// 
+
+			if(matchOccurrences > itMaxOccurrences) {
+				itMaxOccurrences = matchOccurrences;
+				itMax = match;
+			}
+		}
+
+		//
+		// Pos-for body
+
+		incrementPtr(buffer, twPtr)
+		twIdx++;
+		lhPtr = buffer->endTw;
+	}	
+
+	occurrences = itMaxOccurrences;
+	return itMax;
+}
+
+
+void 
+addBuffer(
+	__in char* buffer,
+	__in boolean phrase,
+	__in int distance,
+	__in int occurrences,
+	__in char character
+) {
+	//
+	// Todo
 
 
 }
 
+
+void 
+doCompression(
+	__in FILE* source, 
+	__in FILE* destination
+) {
+	PRingBufferChar buffer = newInstance();
+
+	char memBuffer[BUFFER_DIM];
+	int memBufferBits = 0;
+	int *memBufferBitsPtr = &memBufferBits;
+
+	int i = 0;
+	boolean achievedEOF = FALSE;
+	char c;
+
+	char* itMax;
+	int itMaxOccurrences = 0;
+	int* itMaxPtr = &itMaxOccurrences;
+	
+
+	//
+	// Fill lookahead buffer stage
+	// 
+
+	while( (c = fgetc(source)) != EOF && i++ >= lookahead_dim )
+		fillLookahead(buffer, c);
+
+	//
+	// Start compressing (until end of file)
+	// 
+
+	do
+	{
+		int distance;
+		int operations;
+
+		itMax = searchItMax(buffer, itMaxPtr);
+		operations = itMax == NULL ? 1 : *itMaxPtr;
+		distance = buffer->endTw - itMax;
+
+		//
+		// Put character on buffer and if necessary transfer 
+		// to destination file
+		// 
+
+		addBuffer(memBuffer, itMax != NULL, distance, *itMaxPtr, buffer->endTw);
+		
+
+		//
+		// Transfer from source file, operations characters
+		// 
+
+		while(operations-- > 0) {
+			c = fgetc(source);
+
+			if(c == EOF) {
+				achievedEOF = TRUE;
+				break;
+			}
+			
+			// 
+			// Put char on ringbuffer and advance lookahead
+			// 
+			putChar(buffer, c);
+		}
+
+	}while(!achievedEOF);
+
+	
+
+	
+
+
+
+	deleteInstance(buffer);
+}
 
 // *******************************************************************************************************************
 //															Executable
@@ -211,17 +369,24 @@ int main(int argc, char *argv[])
 		return;
 
 	//
-	// Here we got the file destination and source handle
+	// Here we got the file destination and file source handle plus 
+	// origin extension memory allocated
 	// 
 	
 
-	// doCompression(sourceFile);
+	doCompression(source, destination);
 
 
 	//
 	// Close kernel handle to the file
 	//
+
+
 	fclose(source);
+	fclose(destination);
+
+
+	free(originExtension);
 
 	return 0;
 }

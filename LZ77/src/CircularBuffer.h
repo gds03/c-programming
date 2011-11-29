@@ -29,28 +29,28 @@ PRingBufferChar newInstance();
 //
 // Use this method to release one ringbuffer
 //
-void deleteInstance(PRingBufferChar buffer);
+void deleteInstance(__in PRingBufferChar buffer);
 
 //
 // Use this method to fill the lookahead with characters.
 // Tipically, this method is called at first phase, that is,
 // when the lookahead is empty.
 //
-void fillLookahead(PRingBufferChar buffer, char theChar);
+void fillLookahead(__in PRingBufferChar buffer, __in char theChar);
 
 //
 // Use thid method to decrement the lookahead.
 // Tipically, this method is called once you not have any character
 // to compress - decrementing the lookahead
 // 
-boolean decrementLookahead(PRingBufferChar buffer, int units);
+boolean decrementLookahead(__in PRingBufferChar buffer, __in int units);
 
 //
 // Use this method to put a char in a circular manner on a ringbuffer.
 // Internally, this method increments finish and endTW (slide the lookahead)
 // one unit by each call.
 // 
-void putChar(PRingBufferChar buffer, char theChar);
+void putChar(__in PRingBufferChar buffer, __in char theChar);
 
 
 

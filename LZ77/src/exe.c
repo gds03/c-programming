@@ -1,16 +1,21 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
 #include "CircularBuffer.h"
-
-
 
 
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
-
 #define BUFFER_DIM 4
+
+
+static FILE* source;
+static FILE* destination;
+static char* originExtension;
+
+static char destBuffer[BUFFER_DIM];
+static int	destBufferBits;
+
 
 
 //
@@ -77,9 +82,8 @@ copyCharsAddPakExtension(
 
 boolean
 getDestinationFromSourceFilename(
-	__in char* sourceFilename,
-	__out FILE* destination,
-	__out char* originExtension)
+	__in char* sourceFilename
+)
 {
 
 	//
@@ -145,16 +149,12 @@ getDestinationFromSourceFilename(
 
 //
 // Must verify if arguments are valid and a file exists on disk with the name of the first argument.
-// If the file exists, must create a file dest and return a file handle in output parameter
-// and return true indicating that the call executed with sucess.
+// If the file exists, must create a file dest and return true indicating that the call executed with success.
 // 
 boolean 
-tryInitialize(
+prepareSourceAndDestination(
 	__in int argc,
-	__in char *argv[],
-	__out FILE* source,
-	__out FILE* destination,
-	__out char* originExtension
+	__in char *argv[]
 ) {
 	char *sourceFilename;
 
@@ -181,7 +181,8 @@ tryInitialize(
 	}
 
 
-	if(!getDestinationFromSourceFilename(sourceFilename, destination, originExtension)) {
+	if( !getDestinationFromSourceFilename(sourceFilename) ) {
+		fclose(source);
 		fprintf(stderr, "\n Error while creating compressed file");
 		return FALSE;
 	}
@@ -190,7 +191,10 @@ tryInitialize(
 }
 
 
-
+//
+// Searches the best match on textwindow within the buffer for
+// lookahead word returning in output parameter the matches
+//
 char* 
 searchItMax(
 	__in PRingBufferChar buffer,
@@ -260,32 +264,33 @@ searchItMax(
 
 void 
 addBuffer(
-	__in char* buffer,
 	__in boolean phrase,
 	__in int distance,
 	__in int occurrences,
 	__in char character
 ) {
-	//
-	// Todo
+	if(phrase) {
+		// 
+		// 7 bits to code phrase token
 
 
+
+	}
+	else 
+	{
+
+
+	}
 }
 
 
 void 
-doCompression(
-	__in FILE* source, 
-	__in FILE* destination
-) {
+doCompression() {
 	PRingBufferChar buffer = newInstance();
-
-	char memBuffer[BUFFER_DIM];
-	int memBufferBits = 0;
-	int *memBufferBitsPtr = &memBufferBits;
+	int *memBufferBitsPtr = &destBufferBits;
+	boolean achievedEOF = FALSE;
 
 	int i = 0;
-	boolean achievedEOF = FALSE;
 	char c;
 
 	char* itMax;
@@ -297,7 +302,7 @@ doCompression(
 	// Fill lookahead buffer stage
 	// 
 
-	while( (c = fgetc(source)) != EOF && i++ >= lookahead_dim )
+	while( (c = fgetc(source)) != EOF && i++ < lookahead_dim )
 		fillLookahead(buffer, c);
 
 	//
@@ -308,17 +313,19 @@ doCompression(
 	{
 		int distance;
 		int operations;
+		boolean phrase;
 
 		itMax = searchItMax(buffer, itMaxPtr);
 		operations = itMax == NULL ? 1 : *itMaxPtr;
 		distance = buffer->endTw - itMax;
+		phrase = itMax != NULL;
 
 		//
 		// Put character on buffer and if necessary transfer 
 		// to destination file
 		// 
 
-		addBuffer(memBuffer, itMax != NULL, distance, *itMaxPtr, buffer->endTw);
+		addBuffer(phrase, distance, *itMaxPtr, *buffer->endTw);
 		
 
 		//
@@ -357,24 +364,22 @@ doCompression(
 
 int main(int argc, char *argv[])
 {
-	FILE* source = NULL;
-	FILE* destination = NULL;
 	char* originExtension = NULL;
 
 	//
 	// Validate input data & file
 	//
 
-	if( !tryInitialize(argc, argv, source, destination, originExtension) )
+	if( !prepareSourceAndDestination(argc, argv) )
 		return;
 
 	//
-	// Here we got the file destination and file source handle plus 
-	// origin extension memory allocated
+	// Here we got the file destination, file source handle and 
+	// origin extension memory allocated to be setted on file header
 	// 
 	
 
-	doCompression(source, destination);
+	doCompression();
 
 
 	//

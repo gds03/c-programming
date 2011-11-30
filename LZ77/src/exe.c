@@ -7,14 +7,23 @@
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
 #define BUFFER_DIM 4
+#define CHAR_TOKEN 0
+#define PHRASE_TOKEN 1
 
 
-static FILE* source;
-static FILE* destination;
-static char* originExtension;
+//
+// Global Variables (This is a single thread application)
+// 
 
-static char destBuffer[BUFFER_DIM];
-static int	destBufferBits;
+FILE* source;
+FILE* destination;
+char* originExtension;
+
+int twNecessaryBits;
+int lhNecessaryBits;
+
+char destBuffer[BUFFER_DIM];
+int	destBufferPtr;
 
 
 
@@ -62,6 +71,21 @@ void TestCircularBuffer()
 //
 // Helper methods
 // 
+
+int 
+getNecessaryBitsFor(__in int value) 
+{
+	int count = 1;
+	int internalValue = 1;
+	int slider = 1;
+
+	while(internalValue < value) {
+		internalValue |= (slider <<= 1);
+		count++;
+	}
+
+	return count;
+}
 
 
 void
@@ -269,15 +293,24 @@ addBuffer(
 	__in int occurrences,
 	__in char character
 ) {
+
+	//
+	// We don't need to know the index to index on array.
+	// We can, based on the destBuffer pointer shift the bits and fill the array
+	// filling from the left to the right
+	// 
+
 	if(phrase) {
-		// 
-		// 7 bits to code phrase token
+		//
+		// Write distance to text window and number of occurrences
 
 
 
 	}
 	else 
 	{
+		//
+		// Write char token and char code
 
 
 	}
@@ -287,7 +320,7 @@ addBuffer(
 void 
 doCompression() {
 	PRingBufferChar buffer = newInstance();
-	int *memBufferBitsPtr = &destBufferBits;
+	int *memBufferBitsPtr = &memBufferBitsPtr;
 	boolean achievedEOF = FALSE;
 
 	int i = 0;
@@ -296,6 +329,11 @@ doCompression() {
 	char* itMax;
 	int itMaxOccurrences = 0;
 	int* itMaxPtr = &itMaxOccurrences;
+
+
+	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
+	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1; // -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
+
 	
 
 	//

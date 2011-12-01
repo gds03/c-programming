@@ -8,8 +8,6 @@
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
 
-
-#define CHAR_TOKEN 0
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
 //
@@ -33,10 +31,17 @@ unsigned char bufferToFile;
 char bufferIdx;
 
 
+// ********************************************************************
+//					unordered methods declarations
+// ********************************************************************
 
-//
-// Tests
-// 
+void WriteLastByteIfNecessary() ;
+void writeOnFile();
+
+
+// ********************************************************************
+//					Tests related methods
+// ********************************************************************
 
 void TestCircularBuffer()
 {
@@ -72,12 +77,9 @@ void TestCircularBuffer()
 
 
 
-
-
-
-//
-// Helper methods
-// 
+// ********************************************************************
+//					Compression related methods
+// ********************************************************************
 
 int positiveNumber(int n)
 {
@@ -119,76 +121,6 @@ copyCharsAddPakExtension(
 	// Add pak extension
 	strcpy(destination, PAK_EXTENSION);
 }
-
-boolean
-getDestinationFromSourceFilename(
-	__in char* sourceFilename
-)
-{
-
-	//
-	// 'example.xslt' -> 'example.pak' | 'example' -> 'example.pak'
-	// 
-
-	int destLen, copyTo;
-	int sourceLen = strlen(sourceFilename);	
-	char* ptrLastPoint = strrchr(sourceFilename, '.');
-	char* destFilename;
-	
-	if(ptrLastPoint == NULL) {
-
-		//
-		// File without extension
-		// 
-		copyTo = sourceLen;
-		destLen = sourceLen + PAK_LENGTH;						// Name of the file plus .pak\0
-		originExtension = NULL;									// Tells that source file haven't extension!
-	}
-	else {
-
-		//
-		// File with extension
-		// 
-
-		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
-		originExtension = (char*) malloc(originExtLen);
-		strcpy(originExtension, ++ptrLastPoint);
-		necessaryOffset += originExtLen;
-
-		//
-
-		copyTo = sourceLen - originExtLen;
-		destLen = copyTo + PAK_LENGTH;		
-	}
-
-	//
-	// Build destination name
-	// 
-	
-	destFilename = (char*) malloc(destLen);
-	copyCharsAddPakExtension(sourceFilename, destFilename, copyTo);
-
-
-	//
-	// Try open the file for writing..
-	// 
-	destination = fopen(destFilename, "wb");
-
-	//
-	// We don't need destination filename after this instruction, so we can free the memory!
-	// 
-	free(destFilename);		
-
-
-	if(destination == NULL) {
-		free(originExtension);
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-
 
 
 //
@@ -264,13 +196,6 @@ searchItMax(
 }
 
 
-void writeOnFile()
-{
-	fputc(bufferToFile, destination);		// Write to file
-	tokensCount++;
-	bufferToFile &= 0;
-}
-
 
 void 
 addBuffer(
@@ -322,6 +247,8 @@ addBuffer(
 	}	
 }
 
+
+
 void fillLookaheadBuffer(PRingBufferChar buffer) 
 {
 	int i = 0;
@@ -329,13 +256,6 @@ void fillLookaheadBuffer(PRingBufferChar buffer)
 
 	while( i++ < lookahead_dim && (c = fgetc(source)) != EOF)
 		fillLookahead(buffer, c);
-}
-
-void WriteLastByteIfNecessary() 
-{
-	if(bufferIdx != 0) {
-		writeOnFile();
-	}
 }
 
 void doCompression() 
@@ -461,6 +381,12 @@ void doCompression()
 }
 
 
+
+
+// ********************************************************************
+//					File source related methods
+// ********************************************************************
+
 //
 // This method set the source file* global variable to file source to compress
 // Return: true if file exists, and false if not.
@@ -471,11 +397,30 @@ boolean tryGetSourceFile(const char* fileName)
 	return (boolean) source != NULL;
 }
 
-void
-positionFileDestinationPtrToWrite()
+
+// ********************************************************************
+//					File destination related methods
+// ********************************************************************
+
+
+void WriteLastByteIfNecessary() 
+{
+	if(bufferIdx != 0) {
+		writeOnFile();
+	}
+}
+
+void writeOnFile()
+{
+	fputc(bufferToFile, destination);		// Write to file
+	tokensCount++;
+	bufferToFile &= 0;
+}
+
+void positionFileDestinationPtrToWrite()
 {
 	fseek(destination, 0, SEEK_SET);
-	fseek(destination, necessaryOffset + 5, SEEK_SET); // 5 is the pak\0 and the offset bytes
+	fseek(destination, necessaryOffset + PAK_LENGTH, SEEK_SET); // 5 is the pak\0 and the offset bytes
 }
 
 //
@@ -539,7 +484,6 @@ boolean tryCreateDestinationFile(const char* filename)
 
 	return (boolean) destination != NULL;
 }
-
 
 void doHeader() 
 {

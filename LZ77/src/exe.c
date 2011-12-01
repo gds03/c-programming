@@ -6,11 +6,10 @@
 
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
+
+
 #define CHAR_TOKEN 0
-#define PHRASE_TOKEN 1
 #define CHAR_SIZE_BITS sizeof(char) * 8
-#define CHAR_TOKEN_BITS 9
-#define TOKEN_PHRASE_BIT 0x40
 
 
 //

@@ -351,7 +351,7 @@ doCompression()
 	boolean achievedEOF = FALSE;
 
 	int i = 0;
-	unsigned char c;
+	char c;
 
 	char* itMax;
 	int itMaxOccurrences = 0;

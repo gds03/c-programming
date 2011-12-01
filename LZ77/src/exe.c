@@ -198,14 +198,9 @@ searchItMax(
 	int itMaxOccurrences = 0;
 
 	char* match;
-	int	  matchOccurrences = 0;
-
-	int twIdx = 0;			// Used to know the distance 
-	
+	int	  matchOccurrences = 0;	
 
 	char* twPtr = buffer->start;
-	char* lhPtr = buffer->endTw;
-
 	boolean stop = FALSE;
 
 	//
@@ -213,25 +208,33 @@ searchItMax(
 	// 
 
 	while(!stop && twPtr != buffer->endTw) 
-	{		
-		if(*twPtr == *lhPtr) {
+	{	
+
+		//
+		// Looking for first character first..
+		//
+
+		if(*twPtr == *buffer->endTw) {
 
 			//
 			// First character of lookahead word match
 			// 
+
+			char* twPtrIter = twPtr;
+			char* lhPtrIter = buffer->endTw;
 
 			match = twPtr;
 
 			do {
 				matchOccurrences++;
 
-				if(twPtr == buffer->endTw)
+				if(twPtrIter == buffer->endTw)
 					stop = TRUE;
 
-				incrementPtr(buffer, twPtr);
-				incrementPtr(buffer, lhPtr);
-
-			} while(matchOccurrences <= lookahead_dim && *twPtr == *lhPtr);
+				incrementPtr(buffer, twPtrIter)
+				incrementPtr(buffer, lhPtrIter)
+			}
+			while(matchOccurrences <= lookahead_dim && *twPtrIter == *lhPtrIter);
 
 			//
 			// Establish the higher match here..
@@ -247,8 +250,7 @@ searchItMax(
 		// Pos-for body
 
 		incrementPtr(buffer, twPtr)
-		twIdx++;
-		lhPtr = buffer->endTw;
+		matchOccurrences = 0;
 	}	
 
 	*occurrences = itMaxOccurrences;
@@ -299,7 +301,7 @@ addBuffer(
 
 	if(bufferIdx >= CHAR_SIZE_BITS) {						
 			
-		// WriteToFile();
+		fputc(bufferToFile, destination);		// Write to file
 			
 		bufferToFile &= 0;
 		bufferToFile = lowerPart << (CHAR_SIZE_BITS - missingBits);
@@ -317,6 +319,13 @@ void fillLookaheadBuffer(PRingBufferChar buffer)
 		fillLookahead(buffer, c);
 }
 
+void WriteLastByteIfNecessary() 
+{
+	if(bufferIdx != 0) {
+		fputc(bufferToFile, destination);
+	}
+}
+
 void doCompression() 
 {
 	//
@@ -328,7 +337,7 @@ void doCompression()
 	PRingBufferChar buffer = newInstance();
 
 	boolean achievedEOF = FALSE;
-
+	boolean stopCompress = FALSE;
 	
 	char c;
 	char* itMax;
@@ -351,9 +360,9 @@ void doCompression()
 	// 2nd Stage: Process & Compress
 	// 
 
-	while( TRUE )
+	while( !stopCompress )
 	{
-		int distance;
+		int distance = 0;
 		int operations;
 		boolean phrase;
 
@@ -361,8 +370,20 @@ void doCompression()
 		operations = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
 		phrase = (boolean) itMax != NULL;
 
-		distance = (itMax < buffer->endTw) ? (buffer->endTw - itMax) 
-										   : (( buffer->data + buffer_dim - itMax) + (buffer->endTw - buffer->data));	// sums the endTw distance + itMax until end of the tw
+		//
+		// We only need the distance when token is a phrase
+		//
+
+		if(phrase) {
+
+			if(itMax < buffer->endTw) {
+				distance = buffer->endTw - itMax;
+			} 
+			else {
+				distance = (buffer->data + buffer_dim - itMax) + (buffer->endTw - buffer->data);		// Not tested yet!
+			}
+
+		}
 
 		//
 		// Put character on buffer and if necessary transfer 
@@ -376,42 +397,50 @@ void doCompression()
 		// Transfer from source file, operations characters
 		// 
 
-		if(!achievedEOF) {
+		for( ; operations > 0; operations--) {
 
-			//
-			// Get new characters from source file and enrich the dictionary
-			//
+			if( !achievedEOF ) {
 
-			while(operations-- > 0) {
+				//
+				// If we not touch the end of file we load the next char to c
+				// 
+
 				c = fgetc(source);
 
 				if(c == EOF) {
 					achievedEOF = TRUE;
-					break;
 				}
-			
+			}
+
+			if( !achievedEOF ) {
 				// 
 				// Put char on ringbuffer and advance lookahead
 				// 
+
 				putChar(buffer, c);
+			} 
+			else {
+				
+				//
+				// We don't have any character to get from source, so we decrement the lookahead operations times
+				// 
+				decrementLookahead(buffer, operations);
+
+				if(buffer->endTw == buffer->finish)
+					stopCompress = TRUE;
+
+				break;	// Stop for loop
 			}
-		}
-		else {
-
-			//
-			// 3rd Stage: decrement lookahead & process & compress
-			// 
-
-
-
 		}
 	}
 
-	
-	
-	
+	//
+	// 3rd Stage: We must consult if is data on the buffer and if it is,
+	// we must write to the file the other bits
+	// 
 
-
+	WriteLastByteIfNecessary();
+	
 	//
 	// Free ringbuffer allocated memory!
 	// 

@@ -10,12 +10,14 @@
 
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
+
+
 // ********************************************************************
 //			global variables (this is a single-thread app)
 // ********************************************************************
 
 
-unsigned char necessaryOffset = 3 * sizeof(char) + sizeof(long) + 1;
+unsigned char necessaryOffset = (PAK_LENGTH - 1) + (3 * sizeof(char) + sizeof(long) + 1);
 
 FILE* source;
 FILE* destination;
@@ -414,13 +416,13 @@ void writeOnFile()
 {
 	fputc(bufferToFile, destination);		// Write to file
 	tokensCount++;
-	bufferToFile &= 0;
+	bufferToFile &= 0;						// Cleanup the buffer
 }
 
 void positionFileDestinationPtrToWrite()
 {
 	fseek(destination, 0, SEEK_SET);
-	fseek(destination, necessaryOffset + PAK_LENGTH, SEEK_SET); // 5 is the pak\0 and the offset bytes
+	fseek(destination, necessaryOffset , SEEK_SET); 
 }
 
 //
@@ -454,9 +456,13 @@ boolean tryCreateDestinationFile(const char* filename)
 		// File with extension
 		// 
 
-		int originExtLen = originExtensionSize = strlen(ptrLastPoint);		// Count with . in this measure.
+		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
+		originExtensionSize = originExtLen - 1;
+
 		originExtension = (char*) malloc(originExtLen);
 		strcpy(originExtension, ++ptrLastPoint);
+		necessaryOffset += originExtensionSize;
+
 
 		//
 

@@ -6,9 +6,11 @@
 
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
-#define BUFFER_DIM 4
 #define CHAR_TOKEN 0
 #define PHRASE_TOKEN 1
+#define CHAR_SIZE_BITS sizeof(char) * 8
+#define CHAR_TOKEN_BITS 9
+#define TOKEN_PHRASE_BIT 0x40
 
 
 //
@@ -21,9 +23,10 @@ char* originExtension;
 
 int twNecessaryBits;
 int lhNecessaryBits;
+int phraseTokenBits;
 
-char destBuffer[BUFFER_DIM];
-int	destBufferPtr;
+unsigned char bufferToFile;
+char bufferIdx;
 
 
 
@@ -71,6 +74,12 @@ void TestCircularBuffer()
 //
 // Helper methods
 // 
+
+int 
+getNecessaryMaskFor(__in int bits)
+{
+	return (1 << bits) - 1;
+}
 
 int 
 getNecessaryBitsFor(__in int value) 
@@ -281,7 +290,7 @@ searchItMax(
 		lhPtr = buffer->endTw;
 	}	
 
-	occurrences = itMaxOccurrences;
+	*occurrences = itMaxOccurrences;
 	return itMax;
 }
 
@@ -291,40 +300,58 @@ addBuffer(
 	__in boolean phrase,
 	__in int distance,
 	__in int occurrences,
-	__in char character
-) {
+	__in unsigned char character
+) 
+{
+	int numShifts = 1 + bufferIdx;			// char token + other bits already on character
+	int missingBits;
+	unsigned char higherPart, lowerPart;
 
-	//
-	// We don't need to know the index to index on array.
-	// We can, based on the destBuffer pointer shift the bits and fill the array
-	// filling from the left to the right
-	// 
-
-	if(phrase) {
+	if( phrase ) {
+		
 		//
 		// Write distance to text window and number of occurrences
-
-
-
-	}
-	else 
-	{
 		//
-		// Write char token and char code
+		
+		character &= 0;
+		character = 0x80;					// phrase token
+		character |= (distance << 3);		// distance with 4 bits
+		character |= (--occurrences);		
 
-
+		numShifts--;
+		bufferIdx += 6;
+		missingBits = (CHAR_SIZE_BITS + 1) - bufferIdx;
 	}
+	else {
+		bufferIdx += CHAR_SIZE_BITS;
+		missingBits = numShifts;
+	}
+
+	higherPart = character >> numShifts;					// With Char token Inclusivé
+	lowerPart = character & getNecessaryMaskFor(numShifts); // Remaining lower part bits
+	bufferToFile |= higherPart;
+
+	if(bufferIdx >= CHAR_SIZE_BITS) {
+			
+		// WriteToFile();
+			
+		bufferToFile &= 0;
+		bufferToFile = lowerPart << (CHAR_SIZE_BITS - missingBits);
+			
+		bufferIdx = bufferIdx % (CHAR_SIZE_BITS - 1);
+	}	
 }
 
 
 void 
-doCompression() {
+doCompression() 
+{
 	PRingBufferChar buffer = newInstance();
-	int *memBufferBitsPtr = &memBufferBitsPtr;
+
 	boolean achievedEOF = FALSE;
 
 	int i = 0;
-	char c;
+	unsigned char c;
 
 	char* itMax;
 	int itMaxOccurrences = 0;
@@ -332,7 +359,8 @@ doCompression() {
 
 
 	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
-	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1; // -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
+	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
+	phraseTokenBits = 1 + twNecessaryBits + lhNecessaryBits;			// 1 because phrase token
 
 	
 
@@ -347,7 +375,7 @@ doCompression() {
 	// Start compressing (until end of file)
 	// 
 
-	do
+	while( !achievedEOF )
 	{
 		int distance;
 		int operations;
@@ -355,8 +383,10 @@ doCompression() {
 
 		itMax = searchItMax(buffer, itMaxPtr);
 		operations = itMax == NULL ? 1 : *itMaxPtr;
-		distance = buffer->endTw - itMax;
 		phrase = itMax != NULL;
+
+		distance = (itMax < buffer->endTw) ? (buffer->endTw - itMax) 
+										   : (( buffer->data + buffer_dim - itMax) + (buffer->endTw - buffer->data));	// sums the endTw distance + itMax until end of the tw
 
 		//
 		// Put character on buffer and if necessary transfer 
@@ -383,8 +413,7 @@ doCompression() {
 			// 
 			putChar(buffer, c);
 		}
-
-	}while(!achievedEOF);
+	}
 
 	
 

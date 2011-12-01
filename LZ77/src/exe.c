@@ -179,48 +179,7 @@ getDestinationFromSourceFilename(
 	return TRUE;
 }
 
-//
-// Must verify if arguments are valid and a file exists on disk with the name of the first argument.
-// If the file exists, must create a file dest and return true indicating that the call executed with success.
-// 
-boolean 
-prepareSourceAndDestination(
-	__in int argc,
-	__in char *argv[]
-) {
-	char *sourceFilename;
 
-	//
-	// Verify if user specified the arguments (filename)
-	// 
-
-	if(argc <= 1) {
-		fprintf(stderr, "\n You must specify the filename to compress");
-		return FALSE;
-	}
-
-	sourceFilename  = argv[1];
-
-
-	//
-	// Try open the file handle to the file
-	// 
-	source = fopen(sourceFilename, "rb");
-
-	if(source == NULL) {
-		fprintf(stderr, "\n Error while opening the file");
-		return FALSE;
-	}
-
-
-	if( !getDestinationFromSourceFilename(sourceFilename) ) {
-		fclose(source);
-		fprintf(stderr, "\n Error while creating compressed file");
-		return FALSE;
-	}
-
-	return TRUE;
-}
 
 
 //
@@ -315,10 +274,10 @@ addBuffer(
 		character &= 0;
 		character = 0x80;					// phrase token
 		character |= (distance << 3);		// distance with 4 bits
-		character |= (--occurrences);		
+		character |= (--occurrences);		// e.g: 1 occurrence is representated as 00
 
 		numShifts--;
-		bufferIdx += 6;
+		bufferIdx += phraseTokenBits;
 		missingBits = (CHAR_SIZE_BITS + 1) - bufferIdx;
 	}
 	else {
@@ -359,7 +318,7 @@ doCompression()
 
 	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
 	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
-	phraseTokenBits = 1 + twNecessaryBits + lhNecessaryBits;			// 1 because phrase token
+	phraseTokenBits = twNecessaryBits + lhNecessaryBits;			
 
 	
 
@@ -423,25 +382,109 @@ doCompression()
 	deleteInstance(buffer);
 }
 
+
+
+boolean tryGetSourceFile(const char* fileName)
+{
+	source = fopen(fileName, "rb");
+	return (boolean) source != NULL;
+}
+
+boolean tryCreateDestinationFile(const char* filename) 
+{
+	//
+	// 'example.xslt' -> 'example.pak' | 'example' -> 'example.pak'
+	// 
+
+	int destLen, copyTo;
+	int sourceLen = strlen(filename);	
+	char* ptrLastPoint = strrchr(filename, '.');
+	char* destFilename;
+	
+	if(ptrLastPoint == NULL) {
+
+		//
+		// File without extension
+		// 
+
+		copyTo = sourceLen;
+		destLen = sourceLen + PAK_LENGTH;						// Name of the file plus .pak\0
+		originExtension = NULL;									// Tells that source file haven't extension!	
+	}
+	else {
+
+		//
+		// File with extension
+		// 
+
+		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
+		originExtension = (char*) malloc(originExtLen);
+		strcpy(originExtension, ++ptrLastPoint);
+
+		//
+
+		copyTo = sourceLen - originExtLen;
+		destLen = copyTo + PAK_LENGTH;		
+	}
+
+	//
+	// Build destination name
+	// 
+	
+	destFilename = (char*) malloc(destLen);								// Heap alloc
+	copyCharsAddPakExtension(filename, destFilename, copyTo);
+
+
+	//
+	// Try open the file for writing..
+	// 
+	destination = fopen(destFilename, "wb");
+
+	//
+	// We don't need destination filename after this instruction, so we can free the memory!
+	// 
+	free(destFilename);													// Heap free
+
+	return (boolean) destination != NULL;
+
+}
+
 // *******************************************************************************************************************
 //															Executable
 // *******************************************************************************************************************
 
 
+typedef enum applicationResults 
+{
+	ARGUMENTS_INVALID = 1,
+	SOURCE_FILE_NOT_FOUND = 2,
+	DEST_FILE_ERROR_CREATING = 3
+};
+
 int main(int argc, char *argv[])
 {
-	char* originExtension = NULL;
 
 	//
-	// Validate input data & file
+	// At the first stage we must verify if arguments passed to
+	// the application, have filename to compress.
 	//
 
-	if( !prepareSourceAndDestination(argc, argv) )
-		return;
+	if(argc < 2)
+		return ARGUMENTS_INVALID;
+
+	if( !tryGetSourceFile(argv[1]) ) {
+		fprintf(stderr, "File to compress not found \n");
+		return SOURCE_FILE_NOT_FOUND;
+	}
+
+	if( !tryCreateDestinationFile(argv[1]) ) {
+		fprintf(stderr, "Error while creating pak file \n");
+		return DEST_FILE_ERROR_CREATING;
+	}
 
 	//
-	// Here we got the file destination, file source handle and 
-	// origin extension memory allocated to be setted on file header
+	// Here we got the file destination, file source handle that must be closed at the end.
+	// The origin extension memory allocated to be setted on file header must be freed at the end.
 	// 
 	
 

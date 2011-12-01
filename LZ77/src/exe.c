@@ -10,9 +10,9 @@
 
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
-//
-// Global Variables (This is a single thread application)
-// 
+// ********************************************************************
+//			global variables (this is a single-thread app)
+// ********************************************************************
 
 
 unsigned char necessaryOffset = 3 * sizeof(char) + sizeof(long) + 1;

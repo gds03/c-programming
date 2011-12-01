@@ -74,14 +74,17 @@ void TestCircularBuffer()
 // Helper methods
 // 
 
-int 
-getNecessaryMaskFor(__in int bits)
+int positiveNumber(int n)
+{
+	return n < 0 ? (-1 * n) : n;
+}
+
+int getNecessaryMaskFor(int bits)
 {
 	return (1 << bits) - 1;
 }
 
-int 
-getNecessaryBitsFor(__in int value) 
+int getNecessaryBitsFor(int value) 
 {
 	int count = 1;
 	int internalValue = 1;
@@ -261,7 +264,7 @@ addBuffer(
 	__in unsigned char character
 ) 
 {
-	int numShifts = 1 + bufferIdx;			// char token + other bits already on character
+	int numShifts = 1 + bufferIdx;			// if bufferIdx != 0 shift always and shift one more for char/phrase token
 	int missingBits;
 	unsigned char higherPart, lowerPart;
 
@@ -271,25 +274,30 @@ addBuffer(
 		// Write distance to text window and number of occurrences
 		//
 		
-		character &= 0;
-		character = 0x80;					// phrase token
-		character |= (distance << 3);		// distance with 4 bits
-		character |= (--occurrences);		// e.g: 1 occurrence is representated as 00
+		character &= 0;										// Reset the character (don't matter because we will code as phrase value)
+		character = 0x80;									// phrase token
+		character |= (distance << 3);						// distance with 4 bits
+		character |= (--occurrences);						// e.g: 1 occurrence is representated as 00
 
-		numShifts--;
-		bufferIdx += phraseTokenBits;
-		missingBits = (CHAR_SIZE_BITS + 1) - bufferIdx;
+		numShifts--;										// Decrement because phrase token now counts! (char token doesn't)
+		bufferIdx += phraseTokenBits;						// We must advance phraseTokenBits on the bufferIdx
+		missingBits = positiveNumber(CHAR_SIZE_BITS - numShifts - (phraseTokenBits + 1));	
 	}
 	else {
-		bufferIdx += CHAR_SIZE_BITS;
-		missingBits = numShifts;
+		bufferIdx += CHAR_SIZE_BITS;						// We advance bufferIdx 8 units
+		missingBits = numShifts;							// Missing bits is always the bits that were shifted
 	}
 
 	higherPart = character >> numShifts;					// With Char token Inclusivé
-	lowerPart = character & getNecessaryMaskFor(numShifts); // Remaining lower part bits
-	bufferToFile |= higherPart;
+	lowerPart = character & getNecessaryMaskFor(numShifts); // Remaining lower part bits (we get them by making the mask at 1's with the same number of numShifts)
+	bufferToFile |= higherPart;								// Fill the buffer whithout smaching the old bits
 
-	if(bufferIdx >= CHAR_SIZE_BITS) {
+	//
+	// If bufferIdx is higher than a size of a char means that, the character can be written
+	// to the file and we need to fill the buffer with the lower bits part
+	//
+
+	if(bufferIdx >= CHAR_SIZE_BITS) {						
 			
 		// WriteToFile();
 			
@@ -300,20 +308,32 @@ addBuffer(
 	}	
 }
 
-
-void 
-doCompression() 
+void fillLookaheadBuffer(PRingBufferChar buffer) 
 {
+	int i = 0;
+	char c;
+
+	while( i++ < lookahead_dim && (c = fgetc(source)) != EOF)
+		fillLookahead(buffer, c);
+}
+
+void doCompression() 
+{
+	//
+	//  Only this method needs the ringbuffer to make the compression
+	// 
+
+	// Locals
+
 	PRingBufferChar buffer = newInstance();
 
 	boolean achievedEOF = FALSE;
 
-	int i = 0;
+	
 	char c;
-
 	char* itMax;
 	int itMaxOccurrences = 0;
-	int* itMaxPtr = &itMaxOccurrences;
+	int* itMaxOccurrencesPtr = &itMaxOccurrences;
 
 
 	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
@@ -321,27 +341,25 @@ doCompression()
 	phraseTokenBits = twNecessaryBits + lhNecessaryBits;			
 
 	
-
 	//
-	// Fill lookahead buffer stage
+	// 1st Stage: Fill lookahead
 	// 
 
-	while( (c = fgetc(source)) != EOF && i++ < lookahead_dim )
-		fillLookahead(buffer, c);
+	fillLookaheadBuffer(buffer);	
 
 	//
-	// Start compressing (until end of file)
+	// 2nd Stage: Process & Compress
 	// 
 
-	while( !achievedEOF )
+	while( TRUE )
 	{
 		int distance;
 		int operations;
 		boolean phrase;
 
-		itMax = searchItMax(buffer, itMaxPtr);
-		operations = itMax == NULL ? 1 : *itMaxPtr;
-		phrase = itMax != NULL;
+		itMax = searchItMax(buffer, itMaxOccurrencesPtr);
+		operations = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
+		phrase = (boolean) itMax != NULL;
 
 		distance = (itMax < buffer->endTw) ? (buffer->endTw - itMax) 
 										   : (( buffer->data + buffer_dim - itMax) + (buffer->endTw - buffer->data));	// sums the endTw distance + itMax until end of the tw
@@ -351,45 +369,71 @@ doCompression()
 		// to destination file
 		// 
 
-		addBuffer(phrase, distance, *itMaxPtr, *buffer->endTw);
+		addBuffer(phrase, distance, *itMaxOccurrencesPtr, *buffer->endTw);
 		
 
 		//
 		// Transfer from source file, operations characters
 		// 
 
-		while(operations-- > 0) {
-			c = fgetc(source);
+		if(!achievedEOF) {
 
-			if(c == EOF) {
-				achievedEOF = TRUE;
-				break;
-			}
+			//
+			// Get new characters from source file and enrich the dictionary
+			//
+
+			while(operations-- > 0) {
+				c = fgetc(source);
+
+				if(c == EOF) {
+					achievedEOF = TRUE;
+					break;
+				}
 			
+				// 
+				// Put char on ringbuffer and advance lookahead
+				// 
+				putChar(buffer, c);
+			}
+		}
+		else {
+
+			//
+			// 3rd Stage: decrement lookahead & process & compress
 			// 
-			// Put char on ringbuffer and advance lookahead
-			// 
-			putChar(buffer, c);
+
+
+
 		}
 	}
 
 	
-
+	
 	
 
 
+	//
+	// Free ringbuffer allocated memory!
+	// 
 
 	deleteInstance(buffer);
 }
 
 
-
+//
+// This method set the source file* global variable to file source to compress
+// Return: true if file exists, and false if not.
+// 
 boolean tryGetSourceFile(const char* fileName)
 {
 	source = fopen(fileName, "rb");
 	return (boolean) source != NULL;
 }
 
+//
+// This method set the destination file* global variable to file destination (pak)
+// Return: true if file was created, and false if not.
+//
 boolean tryCreateDestinationFile(const char* filename) 
 {
 	//

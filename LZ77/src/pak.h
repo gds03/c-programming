@@ -6,7 +6,7 @@
    +----------------------------------------------------------+---------------------------------------
 */
 
-struct HeaderPak {
+typedef struct _HeaderPak {
 	char id[4];						/* {'P','A','K',0} */
 	unsigned char offset;			/* to data bits. 10 if EXT_CHAR==3 */
 	unsigned char position_bits;	/* number of bits to position code */
@@ -14,9 +14,8 @@ struct HeaderPak {
 	unsigned char min_coincidences; /* minimum of coincidences coded */
 	unsigned long tokens;			/* total tokens */
 	/*char extension[EXT_CHARS]*/   /* extension chars of original file */
-};
+} HeaderPak, *PHeaderPak;
 
-typedef struct HeaderPak HdrPak;
 /*
    O cabeçalho tem a estrtura definida em struct HeaderPak que pode ter o seguinte aspecto:
    +---+---+---+---+---+---+---+---+--------------+---+---+---+---------------------------------------

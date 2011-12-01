@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "CircularBuffer.h"
+#include "pak.h"
 
 
 #define PAK_EXTENSION ".pak\0"
@@ -11,18 +12,22 @@
 #define CHAR_TOKEN 0
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
-
 //
 // Global Variables (This is a single thread application)
 // 
 
+
+unsigned char necessaryOffset = 3 * sizeof(char) + sizeof(long) + 1;
+
 FILE* source;
 FILE* destination;
 char* originExtension;
+unsigned char originExtensionSize;
 
 int twNecessaryBits;
 int lhNecessaryBits;
 int phraseTokenBits;
+long tokensCount;
 
 unsigned char bufferToFile;
 char bufferIdx;
@@ -137,7 +142,7 @@ getDestinationFromSourceFilename(
 		// 
 		copyTo = sourceLen;
 		destLen = sourceLen + PAK_LENGTH;						// Name of the file plus .pak\0
-		originExtension = NULL;									// Tells that source file haven't extension!	
+		originExtension = NULL;									// Tells that source file haven't extension!
 	}
 	else {
 
@@ -148,6 +153,7 @@ getDestinationFromSourceFilename(
 		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
 		originExtension = (char*) malloc(originExtLen);
 		strcpy(originExtension, ++ptrLastPoint);
+		necessaryOffset += originExtLen;
 
 		//
 
@@ -258,6 +264,14 @@ searchItMax(
 }
 
 
+void writeOnFile()
+{
+	fputc(bufferToFile, destination);		// Write to file
+	tokensCount++;
+	bufferToFile &= 0;
+}
+
+
 void 
 addBuffer(
 	__in boolean phrase,
@@ -269,6 +283,7 @@ addBuffer(
 	int numShifts = 1 + bufferIdx;			// if bufferIdx != 0 shift always and shift one more for char/phrase token
 	int missingBits;
 	unsigned char higherPart, lowerPart;
+
 
 	if( phrase ) {
 		
@@ -300,12 +315,9 @@ addBuffer(
 	//
 
 	if(bufferIdx >= CHAR_SIZE_BITS) {						
-			
-		fputc(bufferToFile, destination);		// Write to file
-			
-		bufferToFile &= 0;
-		bufferToFile = lowerPart << (CHAR_SIZE_BITS - missingBits);
-			
+		writeOnFile();		
+
+		bufferToFile = lowerPart << (CHAR_SIZE_BITS - missingBits);			
 		bufferIdx = bufferIdx % (CHAR_SIZE_BITS - 1);
 	}	
 }
@@ -322,7 +334,7 @@ void fillLookaheadBuffer(PRingBufferChar buffer)
 void WriteLastByteIfNecessary() 
 {
 	if(bufferIdx != 0) {
-		fputc(bufferToFile, destination);
+		writeOnFile();
 	}
 }
 
@@ -459,6 +471,13 @@ boolean tryGetSourceFile(const char* fileName)
 	return (boolean) source != NULL;
 }
 
+void
+positionFileDestinationPtrToWrite()
+{
+	fseek(destination, 0, SEEK_SET);
+	fseek(destination, necessaryOffset + 5, SEEK_SET); // 5 is the pak\0 and the offset bytes
+}
+
 //
 // This method set the destination file* global variable to file destination (pak)
 // Return: true if file was created, and false if not.
@@ -490,7 +509,7 @@ boolean tryCreateDestinationFile(const char* filename)
 		// File with extension
 		// 
 
-		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
+		int originExtLen = originExtensionSize = strlen(ptrLastPoint);		// Count with . in this measure.
 		originExtension = (char*) malloc(originExtLen);
 		strcpy(originExtension, ++ptrLastPoint);
 
@@ -519,7 +538,29 @@ boolean tryCreateDestinationFile(const char* filename)
 	free(destFilename);													// Heap free
 
 	return (boolean) destination != NULL;
+}
 
+
+void doHeader() 
+{
+	PHeaderPak header = (PHeaderPak) malloc(sizeof(HeaderPak));
+
+	header->id[0] = 'P';
+	header->id[1] = 'A';
+	header->id[2] = 'K';
+	header->id[3] = '\0';
+
+	header->offset = necessaryOffset;
+	header->position_bits = twNecessaryBits;
+	header->coincidences_bits = lhNecessaryBits;
+	header->min_coincidences = 1;
+	header->tokens = tokensCount;
+
+	fseek(destination, 0, SEEK_SET);
+	fwrite(header, sizeof(HeaderPak), 1, destination);
+	fwrite(originExtension, originExtensionSize, 1, destination);
+
+	free(header);
 }
 
 // *******************************************************************************************************************
@@ -560,9 +601,11 @@ int main(int argc, char *argv[])
 	// The origin extension memory allocated to be setted on file header must be freed at the end.
 	// 
 	
+	positionFileDestinationPtrToWrite();
 
 	doCompression();
 
+	doHeader();
 
 	//
 	// Close kernel handle to the file

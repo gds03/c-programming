@@ -8,7 +8,9 @@
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 3
 #define HEADER_OFFSET 5
-#define CHAR_SIZE_BITS sizeof(char) * 8
+#define CHAR_TOKEN_SIZE_BITS 9
+#define PHRASE_TOKEN_SIZE_BITS 7
+#define CHAR_SIZE_BITS 8
 
 
 
@@ -28,7 +30,7 @@ int phraseTokenBits;
 long tokensCount;
 
 unsigned char bufferToFile;			// Character buffer to be written to the file
-unsigned char bufferIdx;			// This should never be greater than 16
+unsigned char freePtr;			// This should never be greater than 16
 
 
 // ********************************************************************
@@ -211,6 +213,26 @@ searchItMax(
 }
 
 
+unsigned char __stdcall formatPhraseCharacter(int distance, int occurrences) 
+{
+	unsigned char c = 0;		// Empty char
+
+	c |= 0x80;
+	c |= distance << 3;
+
+	//
+	// This is a trick. 
+	// If occurrences have the second bit at one (values between 3 and 4) we put this on don't care bit
+	// for caller method use and get higherPart in a uniform way.
+	// 
+
+	if(occurrences & 0x02)			
+		c |= 0x04;
+
+	c |= occurrences;
+
+	return c;
+}
 
 void 
 __stdcall
@@ -221,46 +243,46 @@ addBuffer(
 	__in unsigned char character
 ) 
 {
-	int numShifts = 1 + bufferIdx;			// if bufferIdx != 0 shift always and shift one more for char/phrase token
-	int missingBits;
+	int shifts;
 	unsigned char higherPart, lowerPart;
 
+	if( !phrase ) {
 
-	if( phrase ) {
+		shifts = freePtr + 1;		// +1 because the 0 token for char.
+		higherPart = character >> shifts;
+		lowerPart = character & getNecessaryMaskFor(shifts);
 		
-		//
-		// Write distance to text window and number of occurrences
-		//
-		
-		character &= 0;										// Reset the character (don't matter because we will code as phrase value)
-		character = 0x80;									// phrase token
-		character |= (distance << 3);						// distance with 4 bits
-		character |= (--occurrences);						// e.g: 1 occurrence is representated as 00
-
-		numShifts--;										// Decrement because phrase token now counts! (char token doesn't)
-		bufferIdx += phraseTokenBits;						// We must advance phraseTokenBits on the bufferIdx
-		missingBits = moduleNumber(CHAR_SIZE_BITS - numShifts - (phraseTokenBits + 1));	
+		freePtr += CHAR_TOKEN_SIZE_BITS;
 	}
+
 	else {
-		bufferIdx += CHAR_SIZE_BITS;						// We advance bufferIdx 8 units
-		missingBits = numShifts;							// Missing bits is always the bits that were shifted
+
+		character = formatPhraseCharacter(distance, --occurrences);
+		shifts = freePtr;
+		higherPart = character >> shifts;
+		lowerPart = character & getNecessaryMaskFor(shifts);
+		
+		freePtr += PHRASE_TOKEN_SIZE_BITS;
 	}
 
-	higherPart = character >> numShifts;					// With Char token Inclusivé
-	lowerPart = character & getNecessaryMaskFor(numShifts); // Remaining lower part bits (we get them by making the mask at 1's with the same number of numShifts)
-	bufferToFile |= higherPart;								// Fill the buffer whithout smaching the old bits
-
 	//
-	// If bufferIdx is higher than a size of a char means that, the character can be written
-	// to the file and we need to fill the buffer with the lower bits part
+	// This operation is always done
 	//
 
-	if(bufferIdx >= CHAR_SIZE_BITS) {						
-		writeOnFile();		
+	bufferToFile |= higherPart;
 
-		bufferToFile = lowerPart << (CHAR_SIZE_BITS - missingBits);			
-		bufferIdx = bufferIdx % (CHAR_SIZE_BITS - 1);
-	}	
+	//
+	// Figure out if are bits on the queue 
+	// (doing as higher part is written to the file 
+	// (bufferToFile) and lowerPart is written to the buffer)
+	// 
+
+	if( freePtr >= CHAR_SIZE_BITS ) {
+
+		writeOnFile();							// This operations clears the buffer too.
+		freePtr = freePtr % CHAR_SIZE_BITS;
+		bufferToFile = lowerPart << ( CHAR_SIZE_BITS - freePtr );
+	}
 }
 
 
@@ -433,7 +455,7 @@ boolean __stdcall tryGetSourceFile(const char* fileName)
 //
 void __stdcall WriteLastByteIfNecessary() 
 {
-	if(bufferIdx != 0) {
+	if(freePtr != 0) {
 		writeOnFile();
 	}
 }

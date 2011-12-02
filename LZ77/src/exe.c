@@ -7,6 +7,7 @@
 
 #define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 5
+#define HEADER_OFFSET 5
 
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
@@ -16,8 +17,6 @@
 //			global variables (this is a single-thread app)
 // ********************************************************************
 
-
-unsigned char necessaryOffset = (PAK_LENGTH - 1) + (3 * sizeof(char) + sizeof(long) + 1);
 
 FILE* source;
 FILE* destination;
@@ -416,13 +415,13 @@ void writeOnFile()
 {
 	fputc(bufferToFile, destination);		// Write to file
 	tokensCount++;
-	bufferToFile &= 0;						// Cleanup the buffer
+	bufferToFile = 0;						// Cleanup the buffer
 }
 
 void positionFileDestinationPtrToWrite()
 {
 	fseek(destination, 0, SEEK_SET);
-	fseek(destination, necessaryOffset , SEEK_SET); 
+	fseek(destination, sizeof(HeaderPak) + originExtensionSize, SEEK_SET); 
 }
 
 //
@@ -456,17 +455,14 @@ boolean tryCreateDestinationFile(const char* filename)
 		// File with extension
 		// 
 
-		int originExtLen = strlen(ptrLastPoint);		// Count with . in this measure.
-		originExtensionSize = originExtLen - 1;
-
-		originExtension = (char*) malloc(originExtLen);
-		strcpy(originExtension, ++ptrLastPoint);
-		necessaryOffset += originExtensionSize;
+		originExtensionSize = strlen(ptrLastPoint) - 1;
+		originExtension = (char*) malloc(originExtensionSize + 1);		// +1 for the \0 terminator
+		strcpy(originExtension, ++ptrLastPoint);						// advance ptr to first char
 
 
 		//
 
-		copyTo = sourceLen - originExtLen;
+		copyTo = sourceLen - (originExtensionSize + 1);
 		destLen = copyTo + PAK_LENGTH;		
 	}
 
@@ -500,7 +496,7 @@ void doHeader()
 	header->id[2] = 'K';
 	header->id[3] = '\0';
 
-	header->offset = necessaryOffset;
+	header->offset = sizeof(HeaderPak) + originExtensionSize - HEADER_OFFSET;
 	header->position_bits = twNecessaryBits;
 	header->coincidences_bits = lhNecessaryBits;
 	header->min_coincidences = 1;

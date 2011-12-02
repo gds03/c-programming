@@ -280,7 +280,7 @@ addBuffer(
 	if( freePtr >= CHAR_SIZE_BITS ) {
 
 		writeOnFile();							// This operations clears the buffer too.
-		tokensCount++;
+		tokensCount++;							// Increment the number of tokens..
 		freePtr = freePtr % CHAR_SIZE_BITS;
 		bufferToFile = lowerPart << ( CHAR_SIZE_BITS - freePtr );
 	}

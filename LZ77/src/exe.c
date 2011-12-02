@@ -280,6 +280,7 @@ addBuffer(
 	if( freePtr >= CHAR_SIZE_BITS ) {
 
 		writeOnFile();							// This operations clears the buffer too.
+		tokensCount++;
 		freePtr = freePtr % CHAR_SIZE_BITS;
 		bufferToFile = lowerPart << ( CHAR_SIZE_BITS - freePtr );
 	}
@@ -462,13 +463,11 @@ void __stdcall WriteLastByteIfNecessary()
 
 //
 // This is the only method that write bufferToFile to destination file.
-// Automatically increment the tokenCount variable and cleanup the buffer
-// for use the next data.
+// Automatically cleanup the buffer for use the next data.
 //
 void __stdcall writeOnFile()
 {
 	fputc(bufferToFile, destination);		// Write to file
-	tokensCount++;
 	bufferToFile = 0;						// Cleanup the buffer 
 }
 

@@ -6,9 +6,8 @@
 
 
 #define PAK_EXTENSION ".pak\0"
-#define PAK_LENGTH 5
+#define PAK_LENGTH 3
 #define HEADER_OFFSET 5
-
 #define CHAR_SIZE_BITS sizeof(char) * 8
 
 
@@ -28,16 +27,16 @@ int lhNecessaryBits;
 int phraseTokenBits;
 long tokensCount;
 
-unsigned char bufferToFile;
-char bufferIdx;
+unsigned char bufferToFile;			// Character buffer to be written to the file
+unsigned char bufferIdx;			// This should never be greater than 16
 
 
 // ********************************************************************
 //					unordered methods declarations
 // ********************************************************************
 
-void WriteLastByteIfNecessary() ;
-void writeOnFile();
+void __stdcall WriteLastByteIfNecessary() ;
+void __stdcall writeOnFile();
 
 
 // ********************************************************************
@@ -82,53 +81,68 @@ void TestCircularBuffer()
 //					Compression related methods
 // ********************************************************************
 
-int positiveNumber(int n)
+//
+// Given a number, return the module
+// 
+unsigned int __stdcall moduleNumber(int n)
 {
 	return n < 0 ? (-1 * n) : n;
 }
 
-int getNecessaryMaskFor(int bits)
+//
+// Returns one mask for given bits. E.g. bits = 7 returns 1111111 
+// 
+unsigned int __stdcall getNecessaryMaskFor(unsigned int bits)
 {
 	return (1 << bits) - 1;
 }
 
-int getNecessaryBitsFor(int value) 
+//
+// Given a number, returns the necessary bits to express the number
+//
+unsigned int __stdcall getNecessaryBitsFor2(unsigned int value)
 {
-	int count = 1;
-	int internalValue = 1;
-	int slider = 1;
+	unsigned int count = 0;
 
-	while(internalValue < value) {
-		internalValue |= (slider <<= 1);
+	while(value != 0) {
+		value >>= 1;
 		count++;
 	}
 
 	return count;
 }
 
-
-void
+//
+// Given two strings, copy from source to destinations 'count' characters
+// 
+void 
+__stdcall
 copyCharsAddPakExtension(
 	__in char* source, 
 	__in char* destination, 
 	__in int count
 ) {
 
-	for(; count > 0; count--, destination++, source++) {
+	//
+	// Copy chars from source to destination
+	for( ; count > 0; count--, destination++, source++) {
 		*destination = *source;
 	}
 
 	// 
-	// Add pak extension
+	// Add pak extension to destination
 	strcpy(destination, PAK_EXTENSION);
 }
 
 
 //
 // Searches the best match on textwindow within the buffer for
-// lookahead word returning in output parameter the matches
+// lookahead word.
+// Returns NULL if no matches were found or a pointer to the best match.
+// occurrences contains the number of matches (0 where nothings found)
 //
 char* 
+__stdcall
 searchItMax(
 	__in PRingBufferChar buffer,
 	__out int* occurrences
@@ -199,6 +213,7 @@ searchItMax(
 
 
 void 
+__stdcall
 addBuffer(
 	__in boolean phrase,
 	__in int distance,
@@ -224,7 +239,7 @@ addBuffer(
 
 		numShifts--;										// Decrement because phrase token now counts! (char token doesn't)
 		bufferIdx += phraseTokenBits;						// We must advance phraseTokenBits on the bufferIdx
-		missingBits = positiveNumber(CHAR_SIZE_BITS - numShifts - (phraseTokenBits + 1));	
+		missingBits = moduleNumber(CHAR_SIZE_BITS - numShifts - (phraseTokenBits + 1));	
 	}
 	else {
 		bufferIdx += CHAR_SIZE_BITS;						// We advance bufferIdx 8 units
@@ -249,8 +264,11 @@ addBuffer(
 }
 
 
-
-void fillLookaheadBuffer(PRingBufferChar buffer) 
+//
+// This method fills the lookahead with the first file characters.
+// Should be called only when algorithm is starting..
+//
+void __stdcall fillLookaheadBuffer(PRingBufferChar buffer) 
 {
 	int i = 0;
 	char c;
@@ -259,27 +277,26 @@ void fillLookaheadBuffer(PRingBufferChar buffer)
 		fillLookahead(buffer, c);
 }
 
-void doCompression() 
+
+//
+// This method do the compression algorithm, that is: based on actual lookahead buffer,
+// search on textwindow a phrase matching the max size of lookahead. If nothing is found then
+// generate a character token and put the next character from source within lookahead.
+// If is, generate a phrase token and put maching characters matched on lookahead.
+// 
+void __stdcall doCompression() 
 {
-	//
-	//  Only this method needs the ringbuffer to make the compression
-	// 
-
-	// Locals
-
 	PRingBufferChar buffer = newInstance();
-
-	boolean achievedEOF = FALSE;
 	boolean stopCompress = FALSE;
 	
-	char c;
+	char c = NULL;
 	char* itMax;
 	int itMaxOccurrences = 0;
 	int* itMaxOccurrencesPtr = &itMaxOccurrences;
 
 
-	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
-	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
+	twNecessaryBits = getNecessaryBitsFor2(buffer_dim - lookahead_dim);
+	lhNecessaryBits = getNecessaryBitsFor2(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
 	phraseTokenBits = twNecessaryBits + lhNecessaryBits;			
 
 	
@@ -295,19 +312,20 @@ void doCompression()
 
 	while( !stopCompress )
 	{
-		int distance = 0;
-		int operations;
+		int matchesFound;
 		boolean phrase;
+		int distance = 0;		
+
 
 		itMax = searchItMax(buffer, itMaxOccurrencesPtr);
-		operations = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
+		matchesFound = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
 		phrase = (boolean) itMax != NULL;
 
-		//
-		// We only need the distance when token is a phrase
-		//
-
 		if(phrase) {
+
+			//
+			// We only need the distance when token is a phrase
+			//
 
 			if(itMax < buffer->endTw) {
 				distance = buffer->endTw - itMax;
@@ -327,25 +345,21 @@ void doCompression()
 		
 
 		//
-		// Transfer from source file, operations characters
+		// Transfer from source file, matchesFound characters
 		// 
 
-		for( ; operations > 0; operations--) {
+		for( ; matchesFound > 0; matchesFound--) {
 
-			if( !achievedEOF ) {
+			if( c != EOF ) {
 
 				//
 				// If we not touch the end of file we load the next char to c
 				// 
 
 				c = fgetc(source);
-
-				if(c == EOF) {
-					achievedEOF = TRUE;
-				}
 			}
 
-			if( !achievedEOF ) {
+			if( c != EOF ) {
 				// 
 				// Put char on ringbuffer and advance lookahead
 				// 
@@ -355,21 +369,28 @@ void doCompression()
 			else {
 				
 				//
-				// We don't have any character to get from source, so we decrement the lookahead operations times
+				// We don't have any character to get from source, 
+				// so we decrement the lookahead matchesFound times
 				// 
-				decrementLookahead(buffer, operations);
+
+				decrementLookahead(buffer, matchesFound);
 
 				if(buffer->endTw == buffer->finish)
 					stopCompress = TRUE;
 
-				break;	// Stop for loop
+				//
+				// Stop for loop always (we don't want to look matchesFound
+				// because we already decremented the lookahead)
+				//
+
+				break;	
 			}
 		}
 	}
 
 	//
 	// 3rd Stage: We must consult if is data on the buffer and if it is,
-	// we must write to the file the other bits
+	// we must write to the file the final bits
 	// 
 
 	WriteLastByteIfNecessary();
@@ -392,7 +413,8 @@ void doCompression()
 // This method set the source file* global variable to file source to compress
 // Return: true if file exists, and false if not.
 // 
-boolean tryGetSourceFile(const char* fileName)
+
+boolean __stdcall tryGetSourceFile(const char* fileName)
 {
 	source = fopen(fileName, "rb");
 	return (boolean) source != NULL;
@@ -403,22 +425,38 @@ boolean tryGetSourceFile(const char* fileName)
 //					File destination related methods
 // ********************************************************************
 
-
-void WriteLastByteIfNecessary() 
+//
+// This method verify if it is data on the buffer, and if it is, write that data
+// to destination file
+// Typically is called once you have finish all compression process and
+// is data on the buffer that must be written to the file
+//
+void __stdcall WriteLastByteIfNecessary() 
 {
 	if(bufferIdx != 0) {
 		writeOnFile();
 	}
 }
 
-void writeOnFile()
+//
+// This is the only method that write bufferToFile to destination file.
+// Automatically increment the tokenCount variable and cleanup the buffer
+// for use the next data.
+//
+void __stdcall writeOnFile()
 {
 	fputc(bufferToFile, destination);		// Write to file
 	tokensCount++;
-	bufferToFile = 0;						// Cleanup the buffer
+	bufferToFile = 0;						// Cleanup the buffer 
 }
 
-void positionFileDestinationPtrToWrite()
+//
+// After you have the destination file handle, before you start putting 
+// data within, you must advance the pointer first.
+// Typically this method should be called before you start compress anything only once.
+// Before this space is the header of a pak file.
+//
+void __stdcall positionFileDestinationPtrToWrite()
 {
 	fseek(destination, 0, SEEK_SET);
 	fseek(destination, sizeof(HeaderPak) + originExtensionSize, SEEK_SET); 
@@ -428,7 +466,7 @@ void positionFileDestinationPtrToWrite()
 // This method set the destination file* global variable to file destination (pak)
 // Return: true if file was created, and false if not.
 //
-boolean tryCreateDestinationFile(const char* filename) 
+boolean __stdcall tryCreateDestinationFile(const char* filename) 
 {
 	//
 	// 'example.xslt' -> 'example.pak' | 'example' -> 'example.pak'
@@ -446,7 +484,7 @@ boolean tryCreateDestinationFile(const char* filename)
 		// 
 
 		copyTo = sourceLen;
-		destLen = sourceLen + PAK_LENGTH;						// Name of the file plus .pak\0
+		destLen = sourceLen + PAK_LENGTH + 2;						// Name of the file plus .pak\0
 		originExtension = NULL;									// Tells that source file haven't extension!	
 	}
 	else {
@@ -463,7 +501,7 @@ boolean tryCreateDestinationFile(const char* filename)
 		//
 
 		copyTo = sourceLen - (originExtensionSize + 1);
-		destLen = copyTo + PAK_LENGTH;		
+		destLen = copyTo + PAK_LENGTH + 2;		
 	}
 
 	//
@@ -487,7 +525,12 @@ boolean tryCreateDestinationFile(const char* filename)
 	return (boolean) destination != NULL;
 }
 
-void doHeader() 
+//
+// Before you have all data compressed you should call this method to write 
+// the pak header within file.
+// Typically this method should be called after you compressed all the file.
+//
+void __stdcall doHeader() 
 {
 	PHeaderPak header = (PHeaderPak) malloc(sizeof(HeaderPak));
 
@@ -518,7 +561,8 @@ typedef enum applicationResults
 {
 	ARGUMENTS_INVALID = 1,
 	SOURCE_FILE_NOT_FOUND = 2,
-	DEST_FILE_ERROR_CREATING = 3
+	DEST_FILE_ERROR_CREATING = 3,
+	RETURN_OK = 0
 };
 
 int main(int argc, char *argv[])
@@ -564,7 +608,7 @@ int main(int argc, char *argv[])
 
 	free(originExtension);
 
-	return 0;
+	return RETURN_OK;
 }
 
 

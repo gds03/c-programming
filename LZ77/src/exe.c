@@ -29,8 +29,8 @@ int lhNecessaryBits;
 int phraseTokenBits;
 long tokensCount;
 
-unsigned char bufferToFile;			// Character buffer to be written to the file
-unsigned char freePtr;			// This should never be greater than 16
+unsigned char bufferToFile;			// Character buffer to be written on the file
+unsigned char freePtr;				// Points to the next free bit within bufferToFile character
 
 
 // ********************************************************************
@@ -92,7 +92,8 @@ unsigned int __stdcall moduleNumber(int n)
 }
 
 //
-// Returns one mask for given bits. E.g. bits = 7 returns 1111111 
+// Returns one mask with all bits with 1 for given bits.
+// E.g. bits = 7 returns 1111111 
 // 
 unsigned int __stdcall getNecessaryMaskFor(unsigned int bits)
 {
@@ -115,7 +116,8 @@ unsigned int __stdcall getNecessaryBitsFor2(unsigned int value)
 }
 
 //
-// Given two strings, copy from source to destinations 'count' characters
+// Given two strings, copy from source to destination, 'count' characters
+// and at the end, copy .pak extension
 // 
 void 
 __stdcall
@@ -141,7 +143,7 @@ copyCharsAddPakExtension(
 // Searches the best match on textwindow within the buffer for
 // lookahead word.
 // Returns NULL if no matches were found or a pointer to the best match.
-// occurrences contains the number of matches (0 where nothings found)
+// occurrences contains the number of matches (0 where nothing's found)
 //
 char* 
 __stdcall
@@ -172,8 +174,7 @@ searchItMax(
 		if(*twPtr == *buffer->endTw) {
 
 			//
-			// First character of lookahead word match
-			// 
+			// If we are here, we have the first match of the first character on textwindow
 
 			char* twPtrIter = twPtr;
 			char* lhPtrIter = buffer->endTw;
@@ -213,12 +214,18 @@ searchItMax(
 }
 
 
-unsigned char __stdcall formatPhraseCharacter(int distance, int occurrences) 
+//
+// Typically this method is called once you have a phrase token.
+// The char formatted is like: 1XXXXZYY 
+// where; Z - Don't care Bit, XXXX are the distance, and Y are the occurrences
+// 
+
+unsigned char __stdcall formatPhraseCharacter(unsigned int distance, unsigned int occurrences) 
 {
 	unsigned char c = 0;		// Empty char
 
 	c |= 0x80;
-	c |= distance << 3;
+	c |= distance << 3;			// c = 1XXXXZYY (XXXX are shifted 3 times)
 
 	//
 	// This is a trick. 
@@ -226,7 +233,7 @@ unsigned char __stdcall formatPhraseCharacter(int distance, int occurrences)
 	// for caller method use and get higherPart in a uniform way.
 	// 
 
-	if(occurrences & 0x02)			
+	if( (occurrences & 0x02) != 0)		
 		c |= 0x04;
 
 	c |= occurrences;
@@ -243,27 +250,24 @@ addBuffer(
 	__in unsigned char character
 ) 
 {
-	int shifts;
 	unsigned char higherPart, lowerPart;
+	int shifts = freePtr;	
+	tokensCount++;							// Increment the number of tokens..
 
 	if( !phrase ) {
 
-		shifts = freePtr + 1;		// +1 because the 0 token for char.
-		higherPart = character >> shifts;
-		lowerPart = character & getNecessaryMaskFor(shifts);
-		
+		++shifts;							// +1 because the 0 token for char.
 		freePtr += CHAR_TOKEN_SIZE_BITS;
 	}
 
 	else {
 
-		character = formatPhraseCharacter(distance, --occurrences);
-		shifts = freePtr;
-		higherPart = character >> shifts;
-		lowerPart = character & getNecessaryMaskFor(shifts);
-		
+		character = formatPhraseCharacter(distance, --occurrences);	
 		freePtr += PHRASE_TOKEN_SIZE_BITS;
 	}
+
+	higherPart = character >> shifts;
+	lowerPart = character & getNecessaryMaskFor(shifts);
 
 	//
 	// This operation is always done
@@ -272,15 +276,13 @@ addBuffer(
 	bufferToFile |= higherPart;
 
 	//
-	// Figure out if are bits on the queue 
-	// (doing as higher part is written to the file 
-	// (bufferToFile) and lowerPart is written to the buffer)
+	// Figure out if are bits on the lower part and if are, write higher part to the file
+	// and add lower part to the buffer
 	// 
 
 	if( freePtr >= CHAR_SIZE_BITS ) {
 
 		writeOnFile();							// This operations clears the buffer too.
-		tokensCount++;							// Increment the number of tokens..
 		freePtr = freePtr % CHAR_SIZE_BITS;
 		bufferToFile = lowerPart << ( CHAR_SIZE_BITS - freePtr );
 	}

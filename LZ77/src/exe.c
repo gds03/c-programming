@@ -214,29 +214,13 @@ searchItMax(
 }
 
 
-//
-// Typically this method is called once you have a phrase token.
-// The char formatted is like: 1XXXXZYY 
-// where; Z - Don't care Bit, XXXX are the distance, and Y are the occurrences
-// 
-
 unsigned char __stdcall formatPhraseCharacter(unsigned int distance, unsigned int occurrences) 
 {
 	unsigned char c = 0;		// Empty char
 
 	c |= 0x80;
-	c |= distance << 3;			// c = 1XXXXZYY (XXXX are shifted 3 times)
-
-	//
-	// This is a trick. 
-	// If occurrences have the second bit at one (values between 3 and 4) we put this on don't care bit
-	// for caller method use and get higherPart in a uniform way.
-	// 
-
-	if( (occurrences & 0x02) != 0)		
-		c |= 0x04;
-
-	c |= occurrences;
+	c |= distance << 3;			
+	c |= occurrences << 1;
 
 	return c;
 }
@@ -250,7 +234,9 @@ addBuffer(
 	__in unsigned char character
 ) 
 {
-	unsigned char higherPart, lowerPart;
+	unsigned char higherPart = 0;
+	unsigned char lowerPart = 0;
+
 	int shifts = freePtr;	
 	tokensCount++;							// Increment the number of tokens..
 
@@ -258,17 +244,22 @@ addBuffer(
 
 		++shifts;							// +1 because the 0 token for char.
 		freePtr += CHAR_TOKEN_SIZE_BITS;
+
+		lowerPart = character & getNecessaryMaskFor(shifts);
 	}
 
 	else {
+		unsigned int lowerPartMask = getNecessaryMaskFor(shifts - 1);
+		lowerPartMask <<= 1;
 
-		character = formatPhraseCharacter(distance, --occurrences);	
+		character = formatPhraseCharacter(distance, --occurrences);	// First bit returned don't care!
 		freePtr += PHRASE_TOKEN_SIZE_BITS;
+
+		lowerPart = (character & lowerPartMask) >> 1;
 	}
 
 	higherPart = character >> shifts;
-	lowerPart = character & getNecessaryMaskFor(shifts);
-
+	
 	//
 	// This operation is always done
 	//

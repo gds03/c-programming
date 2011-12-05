@@ -5,7 +5,6 @@
 #include "pak.h"
 
 
-#define PAK_EXTENSION ".pak\0"
 #define PAK_LENGTH 3
 #define HEADER_OFFSET 5
 #define CHAR_TOKEN_SIZE_BITS 9
@@ -24,10 +23,10 @@ FILE* destination;
 char* originExtension;
 unsigned char originExtensionSize;
 
-int twNecessaryBits;
-int lhNecessaryBits;
-int phraseTokenBits;
-long tokensCount;
+unsigned int twNecessaryBits;
+unsigned int lhNecessaryBits;
+unsigned int phraseTokenBits;
+unsigned long tokensCount;
 
 unsigned char bufferToFile;			// Character buffer to be written on the file
 unsigned char freePtr;				// Points to the next free bit within bufferToFile character
@@ -103,7 +102,7 @@ unsigned int __stdcall getNecessaryMaskFor(unsigned int bits)
 //
 // Given a number, returns the necessary bits to express the number
 //
-unsigned int __stdcall getNecessaryBitsFor2(unsigned int value)
+unsigned int __stdcall getNecessaryBitsFor(unsigned int value)
 {
 	unsigned int count = 0;
 
@@ -124,7 +123,7 @@ __stdcall
 copyCharsAddPakExtension(
 	__in char* source, 
 	__in char* destination, 
-	__in int count
+	__in unsigned int count
 ) {
 
 	//
@@ -135,7 +134,7 @@ copyCharsAddPakExtension(
 
 	// 
 	// Add pak extension to destination
-	strcpy(destination, PAK_EXTENSION);
+	strcpy(destination, ".pak\0");
 }
 
 
@@ -149,13 +148,13 @@ char*
 __stdcall
 searchItMax(
 	__in PRingBufferChar buffer,
-	__out int* occurrences
+	__out unsigned int* occurrences
 ) {
 	char* itMax = NULL;		// Pointer to the best phrase on dictionary
-	int itMaxOccurrences = 0;
+	unsigned int itMaxOccurrences = 0;
 
 	char* match;
-	int	  matchOccurrences = 0;	
+	unsigned int matchOccurrences = 0;	
 
 	char* twPtr = buffer->start;
 	boolean stop = FALSE;
@@ -214,8 +213,17 @@ searchItMax(
 }
 
 
-unsigned char __stdcall formatPhraseCharacter(unsigned int distance, unsigned int occurrences) 
-{
+
+//
+// Use this method when you need to build a character with phrase token that includes the 
+// distance and occurrences. THe format is: 1XXXXYY0, where XXXX is the distance bits and YY is the occurrences
+// 
+unsigned char
+__stdcall 
+formatPhraseCharacter(
+	__in unsigned int distance,
+	__in unsigned int occurrences
+) {
 	unsigned char c = 0;		// Empty char
 
 	c |= 0x80;
@@ -229,8 +237,8 @@ void
 __stdcall
 addBuffer(
 	__in boolean phrase,
-	__in int distance,
-	__in int occurrences,
+	__in unsigned int distance,
+	__in unsigned int occurrences,
 	__in unsigned char character
 ) 
 {
@@ -246,7 +254,7 @@ addBuffer(
 		// Ever than a char token is created, pendentPart exists and we must preserv old data on the buffer
 		// add current data, write data to the file, and add pendentPart to the buffer.
 
-		char freeBits;
+		unsigned char freeBits;
 		characterShifts = freePtr + 1;				// +1 for highest bit
 		freePtr += CHAR_TOKEN_SIZE_BITS;
 
@@ -325,7 +333,7 @@ addBuffer(
 //
 void __stdcall fillLookaheadBuffer(PRingBufferChar buffer) 
 {
-	int i = 0;
+	unsigned int i = 0;
 	char c;
 
 	while( i++ < lookahead_dim && (c = fgetc(source)) != EOF)
@@ -344,14 +352,14 @@ void __stdcall doCompression()
 	PRingBufferChar buffer = newInstance();
 	boolean stopCompress = FALSE;
 	
-	char c = NULL;
+	int c = NULL;
 	char* itMax;
-	int itMaxOccurrences = 0;
-	int* itMaxOccurrencesPtr = &itMaxOccurrences;
+	unsigned int itMaxOccurrences = 0;
+	unsigned int* itMaxOccurrencesPtr = &itMaxOccurrences;
 
 
-	twNecessaryBits = getNecessaryBitsFor2(buffer_dim - lookahead_dim);
-	lhNecessaryBits = getNecessaryBitsFor2(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
+	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
+	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
 	phraseTokenBits = twNecessaryBits + lhNecessaryBits;			
 
 	
@@ -367,16 +375,15 @@ void __stdcall doCompression()
 
 	while( !stopCompress )
 	{
-		int matchesFound;
+		unsigned int distance = 0;	
+		unsigned int matchesFound;
 		boolean phrase;
-		int distance = 0;		
-
 
 		itMax = searchItMax(buffer, itMaxOccurrencesPtr);
 		matchesFound = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
 		phrase = (boolean) itMax != NULL;
 
-		if(phrase) {
+		if( phrase ) {
 
 			//
 			// We only need the distance when token is a phrase
@@ -662,9 +669,3 @@ int main(int argc, char *argv[])
 
 	return RETURN_OK;
 }
-
-
-
-
-
-

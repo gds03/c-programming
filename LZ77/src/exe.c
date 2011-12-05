@@ -189,7 +189,7 @@ searchItMax(
 				incrementPtr(buffer, twPtrIter)
 				incrementPtr(buffer, lhPtrIter)
 			}
-			while(matchOccurrences <= lookahead_dim && *twPtrIter == *lhPtrIter);
+			while(matchOccurrences < lookahead_dim && *twPtrIter == *lhPtrIter);
 
 			//
 			// Establish the higher match here..

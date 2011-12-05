@@ -234,49 +234,77 @@ addBuffer(
 	__in unsigned char character
 ) 
 {
-	unsigned char higherPart = 0;
-	unsigned char lowerPart = 0;
-
-	int shifts = freePtr;	
-	tokensCount++;							// Increment the number of tokens..
+	unsigned char data = 0;
+	unsigned char pendentPart = 0;
+	unsigned char characterShifts = 0;
+	tokensCount++;
 
 	if( !phrase ) {
 
-		++shifts;							// +1 because the 0 token for char.
+		//
+		// Character Token.
+		// Ever than a char token is created, pendentPart exists and we must preserv old data on the buffer
+		// add current data, write data to the file, and add pendentPart to the buffer.
+
+		characterShifts = freePtr + 1;				// +1 for highest bit
 		freePtr += CHAR_TOKEN_SIZE_BITS;
 
-		lowerPart = character & getNecessaryMaskFor(shifts);
-	}
+		data = character >> characterShifts;		
+		pendentPart = character & getNecessaryMaskFor(characterShifts);
+
+		bufferToFile |= data;			// If already exists data on the buffer, we just add.
+		writeOnFile();					// Write to the file and clear the buffer
+
+		bufferToFile = pendentPart << (CHAR_SIZE_BITS - characterShifts);	// Set pendentPart
+	} 
 
 	else {
-		unsigned int lowerPartMask = getNecessaryMaskFor(shifts - 1);
-		lowerPartMask <<= 1;
 
-		character = formatPhraseCharacter(distance, --occurrences);	// First bit returned don't care!
+		//
+		// Phrase token.
+		// When a phrase token is created, there are 3 possibilities.
+		// 1 - There is available space for the bits and remains 1 bit
+		// 2 - There is available space for the bits and don't remains any bit (must be written to the file)
+		// 3 - There is no space and must be splitted in 2 sequences (1 write and 1 set pendentPart)
+
+		characterShifts = freePtr;
 		freePtr += PHRASE_TOKEN_SIZE_BITS;
+		character = formatPhraseCharacter(distance, --occurrences);
 
-		lowerPart = (character & lowerPartMask) >> 1;
+		if(characterShifts == 0) {
+				
+			//
+			// No data available on the buffer.
+			// pendentPart doesn't need to be filled and we don't need to write the to the file because 1 bit is missing
+
+			bufferToFile = character;
+		}
+
+		else {
+
+			//
+			// Some data is available on the buffer and we must preserv it.
+			// Must always write to the file, but can or not have pendentPart.
+			// 
+
+			data = character >> characterShifts;			
+			bufferToFile |= data;					// Preserv old data and add new data.
+			writeOnFile();	
+
+			if( characterShifts > 1 ) {
+
+				//
+				// pendent part is a subpart of a character bits that doens't were written.
+				pendentPart = ((getNecessaryMaskFor(characterShifts - 1) << 1) & character) >> 1;			
+
+				//
+				// Restore that bits to the buffer
+				bufferToFile = pendentPart << (CHAR_SIZE_BITS - (characterShifts - 1));
+			}			
+		}
 	}
 
-	higherPart = character >> shifts;
-	
-	//
-	// This operation is always done
-	//
-
-	bufferToFile |= higherPart;
-
-	//
-	// Figure out if are bits on the lower part and if are, write higher part to the file
-	// and add lower part to the buffer
-	// 
-
-	if( freePtr >= CHAR_SIZE_BITS ) {
-
-		writeOnFile();							// This operations clears the buffer too.
-		freePtr = freePtr % CHAR_SIZE_BITS;
-		bufferToFile = lowerPart << ( CHAR_SIZE_BITS - freePtr );
-	}
+	freePtr = freePtr % CHAR_SIZE_BITS;
 }
 
 
@@ -347,9 +375,8 @@ void __stdcall doCompression()
 				distance = buffer->endTw - itMax;
 			} 
 			else {
-				distance = (buffer->data + buffer_dim - itMax) + (buffer->endTw - buffer->data);		// Not tested yet!
+				distance = ((buffer->data + buffer_dim) - itMax) + (buffer->endTw - buffer->data);
 			}
-
 		}
 
 		//

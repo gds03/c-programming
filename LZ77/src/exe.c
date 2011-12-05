@@ -246,6 +246,7 @@ addBuffer(
 		// Ever than a char token is created, pendentPart exists and we must preserv old data on the buffer
 		// add current data, write data to the file, and add pendentPart to the buffer.
 
+		char freeBits;
 		characterShifts = freePtr + 1;				// +1 for highest bit
 		freePtr += CHAR_TOKEN_SIZE_BITS;
 
@@ -255,7 +256,17 @@ addBuffer(
 		bufferToFile |= data;			// If already exists data on the buffer, we just add.
 		writeOnFile();					// Write to the file and clear the buffer
 
-		bufferToFile = pendentPart << (CHAR_SIZE_BITS - characterShifts);	// Set pendentPart
+		bufferToFile = pendentPart << (freeBits = CHAR_SIZE_BITS - characterShifts);	// Set pendentPart
+
+		//
+		// This is for the case when freePtr is pointing to last free bit (bit0) and that bit is filled with character token 0
+		// and we will fill all the buffer with the character ascii code (filling the buffer again) that must be written 
+		// to the file.
+		// This only happens when freePtr is pointing to the last free bit.
+		// 
+
+		if(freeBits == 0)
+			writeOnFile();
 	} 
 
 	else {

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
 #include "CircularBuffer.h"
 #include "pak.h"
 
@@ -8,8 +9,8 @@
 #define PAK_LENGTH 3
 #define HEADER_OFFSET 5
 #define CHAR_TOKEN_SIZE_BITS 9
-#define PHRASE_TOKEN_SIZE_BITS 7
-#define CHAR_SIZE_BITS 8
+#define CHAR_SIZE_BITS (sizeof(char) * 8)
+#define INT_SIZE_BITS (sizeof(int) * 8)
 
 
 
@@ -20,16 +21,17 @@
 
 FILE* source;
 FILE* destination;
-char* originExtension;
-unsigned char originExtensionSize;
+
+char* sourceFileExtension;
+unsigned char sourceFileExtensionSize;
 
 unsigned int twNecessaryBits;
 unsigned int lhNecessaryBits;
 unsigned int phraseTokenBits;
 unsigned long tokensCount;
 
-unsigned char bufferToFile;			// Character buffer to be written on the file
-unsigned char freePtr;				// Points to the next free bit within bufferToFile character
+unsigned char fileChar;			// Character buffer to be written on the file
+unsigned char freePtr;
 
 
 // ********************************************************************
@@ -37,7 +39,7 @@ unsigned char freePtr;				// Points to the next free bit within bufferToFile cha
 // ********************************************************************
 
 void __stdcall WriteLastByteIfNecessary() ;
-void __stdcall writeOnFile();
+void __stdcall writeToFile();
 
 
 // ********************************************************************
@@ -46,7 +48,7 @@ void __stdcall writeOnFile();
 
 void TestCircularBuffer()
 {
-	PRingBufferChar buffer = newInstance();
+	PRingBufferChar buffer = newInstance(NULL, NULL);
 	
 	// 
 	// Fill lookahead
@@ -157,13 +159,13 @@ searchItMax(
 	unsigned int matchOccurrences = 0;	
 
 	char* twPtr = buffer->start;
-	boolean stop = FALSE;
+	boolean twCovered = FALSE;
 
 	//
 	// Search lookahead on text window
 	// 
 
-	while(!stop && twPtr != buffer->endTw) 
+	while(!twCovered && twPtr != buffer->endTw) 
 	{	
 
 		//
@@ -178,26 +180,41 @@ searchItMax(
 			char* twPtrIter = twPtr;
 			char* lhPtrIter = buffer->endTw;
 
-			match = twPtr;
+			match = twPtr;	// Set a reference to the first match
 
 			do {
 				matchOccurrences++;
 
-				if(twPtrIter == buffer->endTw)
-					stop = TRUE;
+				if(twPtrIter == buffer->endTw) {
+					
+					// 
+					// Here we don't do a break because the phrase can be included on the lookahead
+					//
+					twCovered = TRUE;	
+				}
 
 				incrementPtr(buffer, twPtrIter)
 				incrementPtr(buffer, lhPtrIter)
 			}
-			while(matchOccurrences < lookahead_dim && *twPtrIter == *lhPtrIter);
+			while( (matchOccurrences < buffer->lookahead_size) && *twPtrIter == *lhPtrIter );
 
 			//
 			// Establish the higher match here..
 			// 
 
-			if(matchOccurrences > itMaxOccurrences) {
+			if( matchOccurrences > itMaxOccurrences ) {
 				itMaxOccurrences = matchOccurrences;
 				itMax = match;
+
+				if( matchOccurrences == buffer->lookahead_size ) {
+
+					//
+					// This verification is for the case that if we found a phrase on tw with 
+					// size of the lookahead, we don't need to continue searching through tw, we can stop!
+					//
+
+					break;
+				}
 			}
 		}
 
@@ -214,23 +231,20 @@ searchItMax(
 
 
 
-//
-// Use this method when you need to build a character with phrase token that includes the 
-// distance and occurrences. THe format is: 1XXXXYY0, where XXXX is the distance bits and YY is the occurrences
-// 
-unsigned char
+unsigned int
 __stdcall 
-formatPhraseCharacter(
+formatPhrase(
 	__in unsigned int distance,
 	__in unsigned int occurrences
 ) {
-	unsigned char c = 0;		// Empty char
+	unsigned char remainingBits = phraseTokenBits;
+	unsigned int phraseCh = 0;
 
-	c |= 0x80;
-	c |= distance << 3;			
-	c |= occurrences << 1;
+	phraseCh = 1 << (--remainingBits);
+	phraseCh |= distance << (remainingBits -= twNecessaryBits);
+	phraseCh |= occurrences;
 
-	return c;
+	return phraseCh;
 }
 
 void 
@@ -239,91 +253,58 @@ addBuffer(
 	__in boolean phrase,
 	__in unsigned int distance,
 	__in unsigned int occurrences,
-	__in unsigned char character
+	__in unsigned char ch
 ) 
 {
-	unsigned char data = 0;
-	unsigned char pendentPart = 0;
-	unsigned char characterShifts = 0;
-	tokensCount++;
-
 	if( !phrase ) {
 
-		//
-		// Character Token.
-		// Ever than a char token is created, pendentPart exists and we must preserv old data on the buffer
-		// add current data, write data to the file, and add pendentPart to the buffer.
+		unsigned char shifts = freePtr + 1;
 
-		unsigned char freeBits;
-		characterShifts = freePtr + 1;				// +1 for highest bit
-		freePtr += CHAR_TOKEN_SIZE_BITS;
+		fileChar |= ch >> shifts;
+		writeToFile();
 
-		data = character >> characterShifts;		
-		pendentPart = character & getNecessaryMaskFor(characterShifts);
+		fileChar = ( ch & getNecessaryMaskFor(shifts) ) << (CHAR_SIZE_BITS - shifts);
 
-		bufferToFile |= data;			// If already exists data on the buffer, we just add.
-		writeOnFile();					// Write to the file and clear the buffer
+		if( freePtr == (CHAR_SIZE_BITS - 1) ) {
+			writeToFile();
+		}
 
-		bufferToFile = pendentPart << (freeBits = CHAR_SIZE_BITS - characterShifts);	// Set pendentPart
-
-		//
-		// This is for the case when freePtr is pointing to last free bit (bit0) and that bit is filled with character token 0
-		// and we will fill all the buffer with the character ascii code (filling the buffer again) that must be written 
-		// to the file.
-		// This only happens when freePtr is pointing to the last free bit.
-		// 
-
-		if(freeBits == 0)
-			writeOnFile();
-	} 
+		freePtr = (freePtr + CHAR_TOKEN_SIZE_BITS) % CHAR_SIZE_BITS;
+	}
 
 	else {
 
-		//
-		// Phrase token.
-		// When a phrase token is created, there are 3 possibilities.
-		// 1 - There is available space for the bits and remains 1 bit
-		// 2 - There is available space for the bits and don't remains any bit (must be written to the file)
-		// 3 - There is no space and must be splitted in 2 sequences (1 write and 1 set pendentPart)
+		unsigned int phraseCh = formatPhrase(distance, occurrences);
+		unsigned char remainingBits = phraseTokenBits;
+		unsigned char freeBits = (CHAR_SIZE_BITS - freePtr);
+		char tmp;
 
-		characterShifts = freePtr;
-		freePtr += PHRASE_TOKEN_SIZE_BITS;
-		character = formatPhraseCharacter(distance, --occurrences);
-
-		if(characterShifts == 0) {
-				
-			//
-			// No data available on the buffer.
-			// pendentPart doesn't need to be filled and we don't need to write the to the file because 1 bit is missing
-
-			bufferToFile = character;
+		if( (tmp = phraseTokenBits - freeBits) < 0 ) {
+			fileChar |= phraseCh << (CHAR_SIZE_BITS - phraseTokenBits);
 		}
 
 		else {
+			fileChar |= phraseCh >> (phraseTokenBits - freeBits);
 
-			//
-			// Some data is available on the buffer and we must preserv it.
-			// Must always write to the file, but can or not have pendentPart.
-			// 
+			remainingBits -= freeBits;	
+			writeToFile();
 
-			data = character >> characterShifts;			
-			bufferToFile |= data;					// Preserv old data and add new data.
-			writeOnFile();	
+			while( (remainingBits / CHAR_SIZE_BITS) >= 1 ) {
+				unsigned char shifts = (remainingBits - CHAR_SIZE_BITS);
 
-			if( characterShifts > 1 ) {
+				fileChar = ( phraseCh & (getNecessaryMaskFor(CHAR_SIZE_BITS) << shifts) ) >> shifts;
+				writeToFile();
+				remainingBits -= CHAR_SIZE_BITS;
+			}
 
-				//
-				// pendent part is a subpart of a character bits that doens't were written.
-				pendentPart = ((getNecessaryMaskFor(characterShifts - 1) << 1) & character) >> 1;			
-
-				//
-				// Restore that bits to the buffer
-				bufferToFile = pendentPart << (CHAR_SIZE_BITS - (characterShifts - 1));
-			}			
+			if(remainingBits > 0) {
+				
+				fileChar = ( phraseCh & getNecessaryMaskFor(remainingBits) ) << (CHAR_SIZE_BITS - remainingBits);
+			}
 		}
-	}
 
-	freePtr = freePtr % CHAR_SIZE_BITS;
+		freePtr = (freePtr + phraseTokenBits) % CHAR_SIZE_BITS;
+	}
 }
 
 
@@ -331,12 +312,15 @@ addBuffer(
 // This method fills the lookahead with the first file characters.
 // Should be called only when algorithm is starting..
 //
-void __stdcall fillLookaheadBuffer(PRingBufferChar buffer) 
-{
+void 
+__stdcall 
+fillLookaheadBuffer(
+	__in PRingBufferChar buffer
+) {
 	unsigned int i = 0;
 	char c;
 
-	while( i++ < lookahead_dim && (c = fgetc(source)) != EOF)
+	while( i++ < buffer->lookahead_size && (c = fgetc(source)) != EOF)
 		fillLookahead(buffer, c);
 }
 
@@ -347,20 +331,20 @@ void __stdcall fillLookaheadBuffer(PRingBufferChar buffer)
 // generate a character token and put the next character from source within lookahead.
 // If is, generate a phrase token and put maching characters matched on lookahead.
 // 
-void __stdcall doCompression() 
-{
-	PRingBufferChar buffer = newInstance();
+void
+__stdcall 
+doCompression(const char* buffer_size, const char* lookahead_size) {
+
+	PRingBufferChar buffer = newInstance(atoi(buffer_size), atoi(lookahead_size));
 	boolean stopCompress = FALSE;
 	
 	int c = NULL;
 	char* itMax;
 	unsigned int itMaxOccurrences = 0;
-	unsigned int* itMaxOccurrencesPtr = &itMaxOccurrences;
 
-
-	twNecessaryBits = getNecessaryBitsFor(buffer_dim - lookahead_dim);
-	lhNecessaryBits = getNecessaryBitsFor(lookahead_dim) - 1;			// -1 is necessary because for example 4 occurrences we can represent with 11 (2bits)
-	phraseTokenBits = twNecessaryBits + lhNecessaryBits;			
+	twNecessaryBits = getNecessaryBitsFor(buffer->buffer_size - buffer->lookahead_size);
+	lhNecessaryBits = getNecessaryBitsFor(buffer->lookahead_size) - 1;	// -1 is necessary because 00 represent 1 occurrence
+	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;			// +1 for the phrase highest bit
 
 	
 	//
@@ -375,15 +359,16 @@ void __stdcall doCompression()
 
 	while( !stopCompress )
 	{
-		unsigned int distance = 0;	
-		unsigned int matchesFound;
-		boolean phrase;
+		unsigned int	 distance = 0;	
+		unsigned int	 matchesFound;
 
-		itMax = searchItMax(buffer, itMaxOccurrencesPtr);
-		matchesFound = itMax == NULL ? 1 : *itMaxOccurrencesPtr;
-		phrase = (boolean) itMax != NULL;
+		itMax = searchItMax(buffer, &itMaxOccurrences);
 
-		if( phrase ) {
+		if(itMax == NULL) {		
+			matchesFound = 1;
+		}
+		else {
+			matchesFound = itMaxOccurrences;
 
 			//
 			// We only need the distance when token is a phrase
@@ -393,7 +378,7 @@ void __stdcall doCompression()
 				distance = buffer->endTw - itMax;
 			} 
 			else {
-				distance = ((buffer->data + buffer_dim) - itMax) + (buffer->endTw - buffer->data);
+				distance = ((buffer->data + buffer->buffer_size) - itMax) + (buffer->endTw - buffer->data);
 			}
 		}
 
@@ -402,7 +387,8 @@ void __stdcall doCompression()
 		// to destination file
 		// 
 
-		addBuffer(phrase, distance, *itMaxOccurrencesPtr, *buffer->endTw);
+		++tokensCount;
+		addBuffer(itMax != NULL, distance, matchesFound - 1, *buffer->endTw);
 		
 
 		//
@@ -475,8 +461,11 @@ void __stdcall doCompression()
 // Return: true if file exists, and false if not.
 // 
 
-boolean __stdcall tryGetSourceFile(const char* fileName)
-{
+boolean 
+__stdcall 
+tryGetSourceFile(
+	__in const char* fileName
+) {
 	source = fopen(fileName, "rb");
 	return (boolean) source != NULL;
 }
@@ -492,10 +481,12 @@ boolean __stdcall tryGetSourceFile(const char* fileName)
 // Typically is called once you have finish all compression process and
 // is data on the buffer that must be written to the file
 //
-void __stdcall WriteLastByteIfNecessary() 
-{
+void 
+__stdcall 
+WriteLastByteIfNecessary() {
+
 	if(freePtr != 0) {
-		writeOnFile();
+		writeToFile();
 	}
 }
 
@@ -503,10 +494,12 @@ void __stdcall WriteLastByteIfNecessary()
 // This is the only method that write bufferToFile to destination file.
 // Automatically cleanup the buffer for use the next data.
 //
-void __stdcall writeOnFile()
-{
-	fputc(bufferToFile, destination);		// Write to file
-	bufferToFile = 0;						// Cleanup the buffer 
+void 
+__stdcall 
+writeToFile() {
+
+	fputc(fileChar, destination);			// Write character to destination
+	fileChar = 0;							// Cleanup the buffer 
 }
 
 //
@@ -515,18 +508,23 @@ void __stdcall writeOnFile()
 // Typically this method should be called before you start compress anything only once.
 // Before this space is the header of a pak file.
 //
-void __stdcall positionFileDestinationPtrToWrite()
-{
+void
+__stdcall 
+positionFileDestinationPtrToWrite() {
+
 	fseek(destination, 0, SEEK_SET);
-	fseek(destination, sizeof(HeaderPak) + originExtensionSize, SEEK_SET); 
+	fseek(destination, sizeof(HeaderPak) + sourceFileExtensionSize, SEEK_SET); 
 }
 
 //
 // This method set the destination file* global variable to file destination (pak)
 // Return: true if file was created, and false if not.
 //
-boolean __stdcall tryCreateDestinationFile(const char* filename) 
-{
+boolean
+__stdcall 
+tryCreateDestinationFile(
+	__in const char* filename
+) {
 	//
 	// 'example.xslt' -> 'example.pak' | 'example' -> 'example.pak'
 	// 
@@ -544,7 +542,7 @@ boolean __stdcall tryCreateDestinationFile(const char* filename)
 
 		copyTo = sourceLen;
 		destLen = sourceLen + PAK_LENGTH + 2;						// Name of the file plus .pak\0
-		originExtension = NULL;									// Tells that source file haven't extension!	
+		sourceFileExtension = NULL;									// Tells that source file haven't extension!	
 	}
 	else {
 
@@ -552,14 +550,14 @@ boolean __stdcall tryCreateDestinationFile(const char* filename)
 		// File with extension
 		// 
 
-		originExtensionSize = strlen(ptrLastPoint) - 1;
-		originExtension = (char*) malloc(originExtensionSize + 1);		// +1 for the \0 terminator
-		strcpy(originExtension, ++ptrLastPoint);						// advance ptr to first char
+		sourceFileExtensionSize = strlen(ptrLastPoint) - 1;
+		sourceFileExtension = (char*) malloc(sourceFileExtensionSize + 1);		// +1 for the \0 terminator
+		strcpy(sourceFileExtension, ++ptrLastPoint);						// advance ptr to first char
 
 
 		//
 
-		copyTo = sourceLen - (originExtensionSize + 1);
+		copyTo = sourceLen - (sourceFileExtensionSize + 1);
 		destLen = copyTo + PAK_LENGTH + 2;		
 	}
 
@@ -589,8 +587,10 @@ boolean __stdcall tryCreateDestinationFile(const char* filename)
 // the pak header within file.
 // Typically this method should be called after you compressed all the file.
 //
-void __stdcall doHeader() 
-{
+void 
+__stdcall 
+doHeader() {
+
 	PHeaderPak header = (PHeaderPak) malloc(sizeof(HeaderPak));
 
 	header->id[0] = 'P';
@@ -598,7 +598,7 @@ void __stdcall doHeader()
 	header->id[2] = 'K';
 	header->id[3] = '\0';
 
-	header->offset = sizeof(HeaderPak) + originExtensionSize - HEADER_OFFSET;
+	header->offset = sizeof(HeaderPak) + sourceFileExtensionSize - HEADER_OFFSET;
 	header->position_bits = twNecessaryBits;
 	header->coincidences_bits = lhNecessaryBits;
 	header->min_coincidences = 1;
@@ -606,7 +606,7 @@ void __stdcall doHeader()
 
 	fseek(destination, 0, SEEK_SET);
 	fwrite(header, sizeof(HeaderPak), 1, destination);
-	fwrite(originExtension, originExtensionSize, 1, destination);
+	fwrite(sourceFileExtension, sourceFileExtensionSize, 1, destination);
 
 	free(header);
 }
@@ -632,7 +632,7 @@ int main(int argc, char *argv[])
 	// the application, have filename to compress.
 	//
 
-	if(argc < 2)
+	if(argc < 4)
 		return ARGUMENTS_INVALID;
 
 	if( !tryGetSourceFile(argv[1]) ) {
@@ -652,7 +652,7 @@ int main(int argc, char *argv[])
 	
 	positionFileDestinationPtrToWrite();
 
-	doCompression();
+	doCompression(argv[2], argv[3]);
 
 	doHeader();
 
@@ -665,7 +665,7 @@ int main(int argc, char *argv[])
 	fclose(destination);
 
 
-	free(originExtension);
+	free(sourceFileExtension);
 
 	return RETURN_OK;
 }

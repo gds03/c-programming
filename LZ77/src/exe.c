@@ -359,27 +359,39 @@ doCompression(const char* buffer_size, const char* lookahead_size) {
 
 	while( !stopCompress )
 	{
-		unsigned int	 distance = 0;	
-		unsigned int	 matchesFound;
+		unsigned int	 distance	  = 0;	
+		unsigned int	 matchesFound = 1;
+		
+		boolean codeAsPhrase = FALSE;
+
+		//
+		// Search in dictionary
+		// 
 
 		itMax = searchItMax(buffer, &itMaxOccurrences);
 
-		if(itMax == NULL) {		
-			matchesFound = 1;
-		}
-		else {
-			matchesFound = itMaxOccurrences;
-
+		if( itMax != NULL ) {		
+			
 			//
-			// We only need the distance when token is a phrase
+			// As the phrase token is dynamic, we must decide which codification is lower.
+			// Code the sequence as a phrase or separate character tokens.
 			//
+			
+			if( phraseTokenBits < (CHAR_TOKEN_SIZE_BITS * itMaxOccurrences) ) {
+				codeAsPhrase = TRUE;
+				matchesFound = itMaxOccurrences;
 
-			if(itMax < buffer->endTw) {
-				distance = buffer->endTw - itMax;
-			} 
-			else {
-				distance = ((buffer->data + buffer->buffer_size) - itMax) + (buffer->endTw - buffer->data);
-			}
+				//
+				// We only need the distance when token is a phrase
+				//
+
+				if(itMax < buffer->endTw) {
+					distance = buffer->endTw - itMax;
+				} 
+				else {
+					distance = ((buffer->data + buffer->buffer_size) - itMax) + (buffer->endTw - buffer->data);
+				}
+			}	
 		}
 
 		//
@@ -388,7 +400,7 @@ doCompression(const char* buffer_size, const char* lookahead_size) {
 		// 
 
 		++tokensCount;
-		addBuffer(itMax != NULL, distance, matchesFound - 1, *buffer->endTw);
+		addBuffer(codeAsPhrase, distance, matchesFound - 1, *buffer->endTw);
 		
 
 		//

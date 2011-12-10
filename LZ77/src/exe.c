@@ -143,7 +143,7 @@ copyCharsAddPakExtension(
 //
 // Searches the best match on textwindow within the buffer for
 // lookahead word.
-// Returns NULL if no matches were found or a pointer to the best match.
+// Returns NULL if no matches were found, or returns a pointer to the best match.
 // occurrences contains the number of matches (0 where nothing's found)
 //
 char* 
@@ -230,7 +230,12 @@ searchItMax(
 }
 
 
-
+//
+// Typically called by addBuffer.
+// This method returns a integer where the lower bits are the occurrences, the next are the distance and
+// the next are the bit at 1 (phrase bit token). For example:
+// 1XXXXXXXXYYYY - 8 bits for distance (256 dictionary entries and 16 entries for lookahead
+//
 unsigned int
 __stdcall 
 formatPhrase(
@@ -246,6 +251,30 @@ formatPhrase(
 
 	return phraseCh;
 }
+
+
+//
+// (One of the most important algorithms of the application)
+// Tipically called by doCompression.
+// This algorithm have 2 possibles codifications.
+// 1. Character token (static 9 bits)
+// 2. Phrase token (dynamic x bits)
+//
+// For Character token:
+//		- Union fileChar buffer with higher bits of ch.
+//      - call WriteToFile
+//		- Set fileChar buffer with lower bits of ch.
+//		- Verify if freePtr is pointing to 7 (means that we must call WriteToCall) because
+//		  the buffer will be filled and must be written to destination.
+//
+// For Phrase token:
+//		- Get phrase token based on distance and occurrences.
+//		- Verify if it is available space on the buffer that we can union the phrase token 
+//		  without writing to the file.
+//			If is: We just make a union.
+//			If not:	We union the higher bits of the phrase and start trying to fill the buffer with
+//					8 char bits. When there is impossible, we just set the restant bits to the higher part
+//					of the buffer
 
 void 
 __stdcall
@@ -329,7 +358,7 @@ fillLookaheadBuffer(
 // This method do the compression algorithm, that is: based on actual lookahead buffer,
 // search on textwindow a phrase matching the max size of lookahead. If nothing is found then
 // generate a character token and put the next character from source within lookahead.
-// If is, generate a phrase token and put maching characters matched on lookahead.
+// If is, generate a phrase token and get maching characters from destination on lookahead.
 // 
 void
 __stdcall 

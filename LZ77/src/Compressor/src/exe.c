@@ -438,8 +438,10 @@ int main(int argc, char *argv[])
 
 	boolean success;
 
-	if( argc < 4 )
+	if( argc < 4 ) {
+		fprintf(stderr, "Arguments invalid: Should be pak <filename> <dictionary_size> <lookahead_size>");
 		return ARGUMENTS_INVALID;
+	}
 
 	if( !trySetSourceFile(argv[1]) ) {
 		fprintf(stderr, "File to compress not found \n");

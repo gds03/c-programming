@@ -3,84 +3,75 @@
 void 
 __stdcall
 copyCharsAddExtension(
-	__in char* source, 
 	__in char* destination, 
+	__in char* source, 
 	__in int nElems,
 	__in char* extension
 ) {
 
-	//
+	unsigned char extLength = strlen(extension);
+
 	// Copy chars from source to destination
 	for( ; nElems > 0; nElems--, destination++, source++) {
 		*destination = *source;
 	}
 
-	// 
-	// Add extension to destination
-	strcpy(destination, extension);
+	// Add .
+	*(destination)++ = '.';
+
+	// Add extension
+	for( ; extLength > 0; extLength--, destination++, extension++) {
+		*destination = *extension;
+	}
+
+	// Finish string boundaries.
+	*destination = '\0';
 }
 
-boolean
+char*
 __stdcall 
-tryCreateDestinationFile(
+trySetDestinationFile(
 	__in char* srcFilename,
-	__in char* dstFileExt
-) {
-	//
-	// 'example.xslt' -> 'example.pak' | 'example' -> 'example.pak'
-	// 
-	
+	__in char* dstFileExt,
+	__inout boolean* success
+){
+	unsigned char srcFilenameLength = strlen(srcFilename);
+	unsigned char dstFileExtLength = strlen(dstFileExt);
+
+	char* dotPtr = strrchr(srcFilename, '.');
 	char* dstFilename;
-	int dstLength, charsToCopy;
+	char* srcFilenameExt;
 
-	int srcLength				   = strlen(srcFilename);	
-	char* ptrLastPoint			   = strrchr(srcFilename, '.');
-	unsigned char dstFileExtLength = strlen(dstFileExt) - 1;	// Exclude the .
-	
-	
-	if( ptrLastPoint == NULL ) {
+	if( dotPtr == NULL ) {
 
 		//
-		// File without extension
-		// 
+		// source file don't contain any extension
+		//
 
-		charsToCopy = srcLength;						// Copy all characters
-		dstLength = srcLength + dstFileExtLength + 2;	// +2 for . and for \0 characters
-		sourceFileExtension = NULL;						// Indicate that the file have'nt extension			
+		dstFilename = (char*) malloc(srcFilenameLength + 2 + dstFileExtLength);		// +2 for . and '\0'
+		copyCharsAddExtension(dstFilename, srcFilename, srcFilenameLength, dstFileExt);
+		*srcFilenameExt = NULL;
 	}
+
 	else {
-
-		//
-		// File with extension
-		// 
-
-		unsigned char srcFileExtLength = strlen(++ptrLastPoint);		// ex: .txt returns 3
-
-		sourceFileExtension = (char*) malloc(srcFileExtLength + 1);		// +1 for \0 character
-		strcpy(sourceFileExtension, ptrLastPoint);						// Copy extension and \0 characters				
-
-		//
-
-		charsToCopy = srcLength - srcFileExtLength - 1;					// -1 for excluding the .
-		dstLength = charsToCopy + dstFileExtLength + 2;					
+		
+		unsigned char bodyLength = dotPtr - srcFilename;
+		dstFilename = (char*) malloc(bodyLength + 2 + dstFileExtLength);		// +2 for . and '\0'
+		copyCharsAddExtension(dstFilename, srcFilename, bodyLength, dstFileExt);
+		
+		// Alloc on heap the source extension (the caller must call free)
+		srcFilenameExt = (char*) malloc(srcFilenameLength - (dotPtr - srcFilename));
+		strcpy(srcFilenameExt, ++dotPtr);
 	}
 
-	//
-	// Build destination name
-	// 	
-	dstFilename = (char*) malloc(dstLength);												// Heap alloc
-	copyCharsAddExtension(srcFilename, dstFilename, charsToCopy, dstFileExt);
-
-
-	//
-	// Try open the file for writing..
-	// 
 	destFile = fopen(dstFilename, "wb");
 
-	//
-	// We don't need destination filename after this instruction, so we can free the memory!
-	// 
-	free(dstFilename);													// Heap free
+	free(dstFilename);
+	*success = (boolean) destFile != NULL;
 
-	return (boolean) destFile != NULL;
+	if( !success && dotPtr != NULL ) {
+		free(srcFilenameExt);
+	}
+
+	return srcFilenameExt;
 }

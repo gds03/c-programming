@@ -436,7 +436,9 @@ int main(int argc, char *argv[])
 	// the application, have filename to compress.
 	//
 
-	if(argc < 4)
+	boolean success;
+
+	if( argc < 4 )
 		return ARGUMENTS_INVALID;
 
 	if( !trySetSourceFile(argv[1]) ) {
@@ -444,7 +446,9 @@ int main(int argc, char *argv[])
 		return SOURCE_FILE_NOT_FOUND;
 	}
 
-	if( !tryCreateDestinationFile(argv[1], ".pak\0") ) {
+	sourceFileExtension = trySetDestinationFile(argv[1], "pak", &success);
+	
+	if( !success ) {
 		fprintf(stderr, "Error while creating pak file \n");
 		return DEST_FILE_ERROR_CREATING;
 	}

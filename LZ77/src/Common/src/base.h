@@ -13,6 +13,9 @@
 #define CHAR_SIZE_BITS (sizeof(char) * 8)
 #define INT_SIZE_BITS (sizeof(int) * 8)
 
+#define member_size(type, member) sizeof(((type *)0)->member)
+#define after_offset_size (member_size(HeaderPak, coincidences_bits) + member_size(HeaderPak, position_bits) + member_size(HeaderPak, min_coincidences) + member_size(HeaderPak, tokens))
+
 
 typedef enum _boolean
 {
@@ -25,6 +28,7 @@ typedef enum applicationResults
 	ARGUMENTS_INVALID = 1,
 	SOURCE_FILE_NOT_FOUND = 2,
 	DEST_FILE_ERROR_CREATING = 3,
+	SOURCE_FILE_NOT_PAK_FILE = 4,
 	RETURN_OK = 0
 };
 
@@ -80,8 +84,8 @@ getNecessaryBitsFor(
 void 
 __stdcall
 copyCharsAddExtension(
-	__in char* source, 
 	__in char* destination, 
+	__in char* source, 
 	__in int nElems,
 	__in char* extension
 );
@@ -116,14 +120,17 @@ positionFileDestination(
 }
 
 //
-// This method set the destination file* to file destination (pak)
-// Return: true if file was created, and false if not.
-//
-boolean
+// Based on sourceFilename, this method will try set the destFile handler
+// to a file with sourceFilename without extension (if have one) concatenated with
+// .(dstFileExt) - Example: Exemplo.txt -> Exemplo.MyExtension		or		Exemplo -> Exemplo.MyExtension
+// 
+
+char*
 __stdcall 
-tryCreateDestinationFile(
+trySetDestinationFile(
 	__in char* srcFilename,
-	__in char* dstFileExt
+	__in char* dstFileExt,
+	__inout boolean* success
 );
 
 

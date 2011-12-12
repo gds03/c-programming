@@ -134,7 +134,6 @@ tryCreateDestinationFile(
 void 
 __forceinline 
 writeToFile() {
-
 	fputc(fileChar, destFile);				// Write character to destination
 	fileChar = 0;							// Cleanup the buffer 
 }
@@ -151,7 +150,6 @@ writeToFile() {
 void 
 __forceinline 
 writeLastByteIfNecessary() {
-
 	if( freePtr != 0 ) {
 		writeToFile();
 	}

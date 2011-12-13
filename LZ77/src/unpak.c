@@ -88,7 +88,12 @@ void doDecompression() {
 
 		else {
 			unsigned int distance, occurrences;
+			unsigned char remainingDistanceBits = twNecessaryBits;
+			unsigned char remainingOccurrencesBits = lhNecessaryBits;
+
 			char* itMax;
+
+
 
 			
 

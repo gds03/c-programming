@@ -1,4 +1,5 @@
 #include "base.h"
+#include "circularBuffer.h"
 
 
 
@@ -24,8 +25,69 @@ void setSourceFileInformation() {
 	fseek(sourceFile, 1, SEEK_CUR);			// Advance 1 byte (ignore min_coincidences)
 	fread(&tokensCount, 1, member_size(HeaderPak, tokens), sourceFile);
 
-	fread(sourceFileExtension, 1, srcExtLength, sourceFile);
-	*(sourceFileExtension + srcExtLength) = '\0';		// End the string
+	fread(sourceFileExtension, 1, srcExtLength, sourceFile);	// Set extension on sourceFileExtension
+	*(sourceFileExtension + srcExtLength) = '\0';				// End the string
+}
+
+void doDecompression() {
+
+	PRingBufferChar buffer = newInstance( getNecessaryMaskFor(twNecessaryBits), getNecessaryMaskFor(lhNecessaryBits) + 1 );
+
+	char* itMax;
+	int c = fgetc(sourceFile);
+	unsigned char theChar;
+
+	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;
+
+	//
+	// 1st Stage: Process & Decompress
+	//
+
+	while( TRUE ) 
+	{
+		if( c == EOF ) {
+			break;
+		}
+
+		else {
+			unsigned char ch = c;
+
+			boolean decodeAsPhrase = (boolean) ( ch & (1 << ((CHAR_SIZE_BITS - 1) - freePtr)) );		// With 1 bit, we can know which token to decode.
+
+			if( !decodeAsPhrase ) {
+				unsigned char shifts  = 0;
+				theChar = 0;				
+			
+				// +1 for 0 bit token
+				theChar = ( ch & getNecessaryMaskFor( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
+				c = fgetc(sourceFile);
+			
+				if( c == EOF ) break;
+				else {
+					ch = c;
+					theChar |= ch >> (CHAR_SIZE_BITS - shifts);
+					putTextWindow(buffer, theChar);
+					fputc(theChar, destFile);
+
+					if( freePtr == (CHAR_SIZE_BITS - 1) ) {
+						c = fgetc(sourceFile);
+						if( c == EOF ) break;
+					}
+				}
+
+				freePtr = (freePtr + CHAR_TOKEN_SIZE_BITS) % CHAR_SIZE_BITS;
+			}
+
+			else {
+				
+				
+
+
+
+			}
+		}
+
+	}
 }
 
 
@@ -33,7 +95,7 @@ int main(int argc, char* argv[]) {
 
 	boolean success;
 
-	if(argc != 2) {
+	if( argc != 2 ) {
 		fprintf(stderr, "Arguments invalid: Should be unpak <filename>");
 		return ARGUMENTS_INVALID;
 	}
@@ -44,7 +106,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	//
-	// Before we can create the destination file, we must know what's the extension of source file
+	// Before we can create the destination file,
+	// we must know what's the extension of original file (we must read the header)
 	//
 
 	if( !verifyPakHeader() ) {
@@ -67,7 +130,7 @@ int main(int argc, char* argv[]) {
 
 
 
-
+	doDecompression();
 
 
 	//

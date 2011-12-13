@@ -122,3 +122,24 @@ putChar(
 		incrementPtr(buffer, buffer->start)
 	}
 }
+
+
+void
+__stdcall
+putTextWindow(
+	__in PRingBufferChar buffer,
+	__in char theChar
+	) 
+{
+	*buffer->finish = theChar;
+
+	if( (buffer->finish + 1) >= (buffer->data + buffer->buffer_size) ) {
+		buffer->circular = TRUE;
+		buffer->finish = buffer->data;
+	}
+	else { buffer->finish++; }
+
+	if ( buffer->circular ) {
+		incrementPtr(buffer, buffer->start);
+	}
+}

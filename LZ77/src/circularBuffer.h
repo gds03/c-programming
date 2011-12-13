@@ -83,6 +83,20 @@ putChar(
 );
 
 
+//
+// Use thid method to put a char ir a circular manner, but this method
+// should only be used by the compressor, because the decompressing stage,
+// does not contain lookahead region, and so, this method don't treat lookahead
+// region.
+//
+void
+__stdcall
+putTextWindow(
+	__in PRingBufferChar buffer,
+	__in char theChar
+);
+
+
 
 
 #endif

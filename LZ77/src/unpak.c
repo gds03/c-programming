@@ -87,15 +87,53 @@ void doDecompression() {
 		}
 
 		else {
-			unsigned int distance, occurrences;
+			unsigned int distance = 0, occurrences = 0;
 			unsigned char remainingDistanceBits = twNecessaryBits;
 			unsigned char remainingOccurrencesBits = lhNecessaryBits;
+			unsigned char ptr = freePtr + 1;
+
 
 			char* itMax;
 
+			//
+			// Set distance
+			// 
+			while( remainingDistanceBits > 0 ) {
+
+				if( ptr == CHAR_SIZE_BITS ) {
+					c = fgetc(sourceFile);
+					if( c == EOF ) break;
+					ptr = 0;
+				}
+
+				--remainingDistanceBits;
+
+				if( (c & (1 << ( CHAR_SIZE_BITS - 1 - ptr ))) > 0 )
+					distance |= 1 << remainingDistanceBits;
+
+				ptr++;
+			}	
+
+			//
+			// Set occurrences
+			// 
+			while ( remainingOccurrencesBits > 0 ) {
+
+				if( ptr == CHAR_SIZE_BITS ) {
+					c = fgetc(sourceFile);
+					if( c == EOF ) break;
+					ptr = 0;
+				}
+
+				--remainingOccurrencesBits;
+
+				if( (c & (1 << ( CHAR_SIZE_BITS - 1 - ptr ))) > 0 )
+					occurrences |= 1 << remainingOccurrencesBits;
+
+				ptr++;
+			}
 
 
-			
 
 
 			//

@@ -29,11 +29,21 @@ void setSourceFileInformation() {
 	*(sourceFileExtension + srcExtLength) = '\0';				// End the string
 }
 
+char* getItMax(PRingBufferChar buffer, unsigned int distance) {
+
+	if( buffer->finish > buffer->start ) {
+		return buffer->finish - distance;
+	}
+
+	return ((buffer->finish - distance) >= buffer->data)
+		   ? (buffer->finish - distance)
+		   : (buffer->data + buffer->buffer_size) - (distance - (buffer->finish - buffer->data));
+}
+
 void doDecompression() {
 
 	PRingBufferChar buffer = newInstance( getNecessaryMaskFor(twNecessaryBits), getNecessaryMaskFor(lhNecessaryBits) + 1 );
 
-	char* itMax;
 	int c = fgetc(sourceFile);
 	unsigned char theChar;
 
@@ -80,10 +90,37 @@ void doDecompression() {
 
 			else {
 				
-				
+				unsigned char remainingBits = phraseTokenBits;
+				unsigned char freeBits = (CHAR_SIZE_BITS - freePtr + 1);
+				unsigned int distance, occurrences;
 
+				char tmp;
+				char* itMax;
 
+				if ( (tmp = phraseTokenBits - freeBits) < 0 ) {
 
+					//
+					// The phrase fits the buffer and leave bits available
+					//
+
+					distance = (ch &  (getNecessaryMaskFor(twNecessaryBits) << (tmp = (CHAR_SIZE_BITS - twNecessaryBits - (freePtr + 1))))  ) >> tmp;
+					remainingBits -= twNecessaryBits;
+					occurrences = (ch &  (getNecessaryMaskFor(lhNecessaryBits) << (tmp = (remainingBits - lhNecessaryBits))   )) >> tmp;
+				}
+
+				else {
+
+				}
+
+				itMax = getItMax(buffer, distance);
+
+				for( ; occurrences > 0; occurrences--) {
+					char character = *itMax;
+					incrementPtr(buffer, itMax);
+
+					putTextWindow(buffer, character);
+					fputc(character, destFile);
+				}
 			}
 		}
 

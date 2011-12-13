@@ -205,15 +205,20 @@ addBuffer(
 	else {
 
 		unsigned int phraseCh = formatPhrase(distance, occurrences);
-		unsigned char remainingBits = phraseTokenBits;
 		unsigned char freeBits = (CHAR_SIZE_BITS - freePtr);
 		char tmp;
 
 		if( (tmp = phraseTokenBits - freeBits) < 0 ) {
+		
+			//
+			// The phrase fits the buffer and leave bits available
+			//
+					
 			fileChar |= phraseCh << (CHAR_SIZE_BITS - phraseTokenBits);
 		}
 
 		else {
+			unsigned char remainingBits = phraseTokenBits;
 			fileChar |= phraseCh >> (phraseTokenBits - freeBits);
 
 			remainingBits -= freeBits;	

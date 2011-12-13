@@ -50,7 +50,6 @@ void doDecompression() {
 	);
 
 	int c = fgetc(sourceFile);
-	boolean isCharacter = (boolean) (c & (1 << (CHAR_SIZE_BITS - 1)) == 0);
 
 	//
 	// 1st Stage: Process & Decompress
@@ -59,6 +58,7 @@ void doDecompression() {
 	while( c != EOF ) 
 	{
 		unsigned char ch = c;		// Used for safety shifts
+		boolean isCharacter = (boolean) !(c & (1 << (CHAR_SIZE_BITS - 1 - freePtr)));
 
 		if( isCharacter ) {
 			unsigned char theChar = 0;
@@ -66,21 +66,18 @@ void doDecompression() {
 			
 			// +1 for 0 bit token
 			theChar = ( ch & getNecessaryMaskFor( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
-			c = fgetc(sourceFile);
+			c = fgetc(sourceFile);		// != EOF 
 			
-			if( c == EOF ) break;
-			else {
-				ch = c;
-				theChar |= ch >> (CHAR_SIZE_BITS - shifts);
-				putTextWindow(buffer, theChar);			// Put character on dictionary and write to destination
-				fputc(theChar, destFile);
+			ch = c;
+			theChar |= ch >> (CHAR_SIZE_BITS - shifts);
+			putTextWindow(buffer, theChar);			// Put character on dictionary and write to destination
+			fputc(theChar, destFile);
 
-				if( freePtr == (CHAR_SIZE_BITS - 1) ) {
+			if( freePtr == (CHAR_SIZE_BITS - 1) ) {
 
-					// When this happends, we need to load another byte from source, to continue processing
-					c = fgetc(sourceFile);
-					if( c == EOF ) break;
-				}
+				// When this happends, we need to load another byte from source, to continue processing
+				c = fgetc(sourceFile);
+				if( c == EOF ) break;
 			}
 
 			freePtr = (freePtr + CHAR_TOKEN_SIZE_BITS) % CHAR_SIZE_BITS;
@@ -91,6 +88,7 @@ void doDecompression() {
 			unsigned char remainingDistanceBits = twNecessaryBits;
 			unsigned char remainingOccurrencesBits = lhNecessaryBits;
 			unsigned char ptr = freePtr + 1;
+			unsigned int idx;
 
 
 			char* itMax;
@@ -100,9 +98,8 @@ void doDecompression() {
 			// 
 			while( remainingDistanceBits > 0 ) {
 
-				if( ptr == CHAR_SIZE_BITS ) {
-					c = fgetc(sourceFile);
-					if( c == EOF ) break;
+				if( ptr == CHAR_SIZE_BITS ) {	// If we are pointing to limits we need load another byte
+					c = fgetc(sourceFile);		// != EOF because there are bits for lookahead
 					ptr = 0;
 				}
 
@@ -119,7 +116,7 @@ void doDecompression() {
 			// 
 			while ( remainingOccurrencesBits > 0 ) {
 
-				if( ptr == CHAR_SIZE_BITS ) {
+				if( ptr == CHAR_SIZE_BITS ) {	// If we are pointing to limits we need load another byte
 					c = fgetc(sourceFile);
 					if( c == EOF ) break;
 					ptr = 0;
@@ -133,27 +130,31 @@ void doDecompression() {
 				ptr++;
 			}
 
+			//
+			// Here we have the distance and occurrences filled.
+			//
 
+			if( ptr == CHAR_SIZE_BITS ) {		// If we are pointing to limits we need load another byte
+				c = fgetc(sourceFile);
+			}
 
 
 			//
-			// After we got the distance and occurrences (dificult part), we can 
-			// start filling the dictionary
+			// Fill the dictionary
+			//
 
 			itMax = getItMax(buffer, distance);
 
-			for( ; occurrences > 0; occurrences--) {
-				char character = *itMax;
-				incrementPtr(buffer, itMax)
+			for(idx = 0; idx <= occurrences; idx++) {	// = is needed because for 0 we have 1 occurrence at least.
+				putTextWindow(buffer, *itMax);
+				fputc(*itMax, destFile);
 
-				putTextWindow(buffer, character);
-				fputc(character, destFile);
+				// Advance itMax
+				incrementPtr(buffer, itMax)
 			}
 
 			freePtr = (freePtr + phraseTokenBits) % CHAR_SIZE_BITS;
 		}
-
-		isCharacter = (boolean) (c & (1 << (CHAR_SIZE_BITS - 1 + freePtr)) == 0);
 	}
 }
 

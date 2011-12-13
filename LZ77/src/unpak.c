@@ -27,6 +27,8 @@ void setSourceFileInformation() {
 
 	fread(sourceFileExtension, 1, srcExtLength, sourceFile);	// Set extension on sourceFileExtension
 	*(sourceFileExtension + srcExtLength) = '\0';				// End the string
+
+	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;
 }
 
 char* getItMax(PRingBufferChar buffer, unsigned int distance) {
@@ -42,88 +44,73 @@ char* getItMax(PRingBufferChar buffer, unsigned int distance) {
 
 void doDecompression() {
 
-	PRingBufferChar buffer = newInstance( getNecessaryMaskFor(twNecessaryBits), getNecessaryMaskFor(lhNecessaryBits) + 1 );
+	PRingBufferChar buffer = newInstance(
+		getNecessaryMaskFor(twNecessaryBits), 
+		getNecessaryMaskFor(lhNecessaryBits) + 1	// Ignored
+	);
 
 	int c = fgetc(sourceFile);
-	unsigned char theChar;
-
-	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;
+	boolean isCharacter = (boolean) (c & (1 << (CHAR_SIZE_BITS - 1)) == 0);
 
 	//
 	// 1st Stage: Process & Decompress
 	//
 
-	while( TRUE ) 
+	while( c != EOF ) 
 	{
-		if( c == EOF ) {
-			break;
+		unsigned char ch = c;		// Used for safety shifts
+
+		if( isCharacter ) {
+			unsigned char theChar = 0;
+			unsigned char shifts  = 0;			
+			
+			// +1 for 0 bit token
+			theChar = ( ch & getNecessaryMaskFor( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
+			c = fgetc(sourceFile);
+			
+			if( c == EOF ) break;
+			else {
+				ch = c;
+				theChar |= ch >> (CHAR_SIZE_BITS - shifts);
+				putTextWindow(buffer, theChar);			// Put character on dictionary and write to destination
+				fputc(theChar, destFile);
+
+				if( freePtr == (CHAR_SIZE_BITS - 1) ) {
+
+					// When this happends, we need to load another byte from source, to continue processing
+					c = fgetc(sourceFile);
+					if( c == EOF ) break;
+				}
+			}
+
+			freePtr = (freePtr + CHAR_TOKEN_SIZE_BITS) % CHAR_SIZE_BITS;
 		}
 
 		else {
-			unsigned char ch = c;
+			unsigned int distance, occurrences;
+			char* itMax;
 
-			boolean decodeAsPhrase = (boolean) ( ch & (1 << ((CHAR_SIZE_BITS - 1) - freePtr)) );		// With 1 bit, we can know which token to decode.
-
-			if( !decodeAsPhrase ) {
-				unsigned char shifts  = 0;
-				theChar = 0;				
 			
-				// +1 for 0 bit token
-				theChar = ( ch & getNecessaryMaskFor( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
-				c = fgetc(sourceFile);
-			
-				if( c == EOF ) break;
-				else {
-					ch = c;
-					theChar |= ch >> (CHAR_SIZE_BITS - shifts);
-					putTextWindow(buffer, theChar);
-					fputc(theChar, destFile);
 
-					if( freePtr == (CHAR_SIZE_BITS - 1) ) {
-						c = fgetc(sourceFile);
-						if( c == EOF ) break;
-					}
-				}
 
-				freePtr = (freePtr + CHAR_TOKEN_SIZE_BITS) % CHAR_SIZE_BITS;
+			//
+			// After we got the distance and occurrences (dificult part), we can 
+			// start filling the dictionary
+
+			itMax = getItMax(buffer, distance);
+
+			for( ; occurrences > 0; occurrences--) {
+				char character = *itMax;
+				incrementPtr(buffer, itMax)
+
+				putTextWindow(buffer, character);
+				fputc(character, destFile);
 			}
 
-			else {
-				
-				unsigned char remainingBits = phraseTokenBits;
-				unsigned char freeBits = (CHAR_SIZE_BITS - freePtr + 1);
-				unsigned int distance, occurrences;
-
-				char tmp;
-				char* itMax;
-
-				if ( (tmp = phraseTokenBits - freeBits) < 0 ) {
-
-					//
-					// The phrase fits the buffer and leave bits available
-					//
-
-					distance = (ch &  (getNecessaryMaskFor(twNecessaryBits) << (tmp = (CHAR_SIZE_BITS - twNecessaryBits - (freePtr + 1))))  ) >> tmp;
-					remainingBits -= twNecessaryBits;
-					occurrences = (ch &  (getNecessaryMaskFor(lhNecessaryBits) << (tmp = (remainingBits - lhNecessaryBits))   )) >> tmp;
-				}
-
-				else {
-
-				}
-
-				itMax = getItMax(buffer, distance);
-
-				for( ; occurrences > 0; occurrences--) {
-					char character = *itMax;
-					incrementPtr(buffer, itMax);
-
-					putTextWindow(buffer, character);
-					fputc(character, destFile);
-				}
-			}
+			freePtr = (freePtr + phraseTokenBits) % CHAR_SIZE_BITS;
 		}
 
+		isCharacter = (boolean) (c & (1 << (CHAR_SIZE_BITS - 1 + freePtr)) == 0);
 	}
 }
 

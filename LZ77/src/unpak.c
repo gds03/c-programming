@@ -55,10 +55,11 @@ void doDecompression() {
 	// 1st Stage: Process & Decompress
 	//
 
-	while( c != EOF ) 
+	while( c != EOF && tokensCount > 0 ) 
 	{
 		unsigned char ch = c;		// Used for safety shifts
 		boolean isCharacter = (boolean) !(c & (1 << (CHAR_SIZE_BITS - 1 - freePtr)));
+		--tokensCount;
 
 		if( isCharacter ) {
 			unsigned char theChar = 0;

@@ -2,8 +2,14 @@
 #include "circularBuffer.h"
 
 
-
-boolean verifyPakHeader() {
+//
+// This method verify if the file was compacted by a pak compressor, by verifying the first 4 bytes
+// and comparing if they match with PAK extension.
+// Should be the first (1st) method to be called after we have destination file ready to be written.
+//
+boolean 
+__forceinline
+verifyPakHeader() {
 	char shouldBePakExtension[4];
 
 	fseek(sourceFile, 0, SEEK_SET);
@@ -13,7 +19,17 @@ boolean verifyPakHeader() {
 					 shouldBePakExtension[2] == 'K' && shouldBePakExtension[3] == '\0');
 }
 
-void setSourceFileInformation() {
+
+
+//
+// This method sets an important information to decompressor know how to decompress.
+// Sets TwBits, LhBits, phraseBits, Tokens, and the original extension.
+// Should be the second (2nd) method to be called.
+//
+void 
+__stdcall
+setSourceFileInformation() 
+{
 	unsigned char srcExtLength, offset;
 	
 	fread(&offset, 1, member_size(HeaderPak, offset), sourceFile); 
@@ -31,7 +47,19 @@ void setSourceFileInformation() {
 	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;
 }
 
-char* getItMax(PRingBufferChar buffer, unsigned int distance) {
+
+
+//
+// This method returns the pointer of the itMax.
+// Internally we sees if the finish is ahead of the starting, or the starting is ahead of the finish
+// returning the correct pointer based on the distance.
+//
+char*
+__stdcall
+getItMax(
+	__in PRingBufferChar buffer,
+	__in unsigned int distance
+) {
 
 	if( buffer->finish > buffer->start ) {
 		return buffer->finish - distance;
@@ -42,11 +70,16 @@ char* getItMax(PRingBufferChar buffer, unsigned int distance) {
 		   : (buffer->data + buffer->buffer_size) - (distance - (buffer->finish - buffer->data));
 }
 
-void doDecompression() {
 
+
+
+void 
+__stdcall
+doDecompression() 
+{
 	PRingBufferChar buffer = newInstance(
-		getNecessaryMaskFor(twNecessaryBits), 
-		getNecessaryMaskFor(lhNecessaryBits) + 1	// Ignored
+		getMask(twNecessaryBits), 
+		getMask(lhNecessaryBits) + 1	// Ignored
 	);
 
 	int c = fgetc(sourceFile);
@@ -66,7 +99,7 @@ void doDecompression() {
 			unsigned char shifts  = 0;			
 			
 			// +1 for 0 bit token
-			theChar = ( ch & getNecessaryMaskFor( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
+			theChar = ( ch & getMask( CHAR_SIZE_BITS - (shifts = freePtr + 1) ) ) << shifts;
 			c = fgetc(sourceFile);		// != EOF 
 			
 			ch = c;

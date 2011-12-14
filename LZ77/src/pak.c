@@ -44,7 +44,7 @@ void TestCircularBuffer()
 // Searches the best match on textwindow within the buffer for
 // lookahead word.
 // Returns NULL if no matches were found, or returns a pointer to the best match.
-// occurrences contains the number of matches (0 where nothing's found)
+// occurrences contains the number of matches (0 when nothing's found)
 //
 char* 
 __stdcall
@@ -109,8 +109,8 @@ searchItMax(
 				if( matchOccurrences == buffer->lookahead_size ) {
 
 					//
-					// This verification is for the case that if we found a phrase on tw with 
-					// size of the lookahead, we don't need to continue searching through tw, we can stop!
+					// If we have the greater phrase match we don't need search more and so
+					// turn the algorithm more efficient.
 					//
 
 					break;
@@ -138,7 +138,7 @@ searchItMax(
 // 1XXXXXXXXYYYY - 8 bits for distance (256 dictionary entries and 16 entries for lookahead
 //
 unsigned int
-__stdcall 
+__forceinline 
 formatPhrase(
 	__in unsigned int distance,
 	__in unsigned int occurrences
@@ -156,7 +156,7 @@ formatPhrase(
 
 //
 // (One of the most important algorithms of the application)
-// Tipically called by doCompression.
+// Typically called by doCompression.
 // This algorithm have 2 possibles codifications.
 // 1. Character token (static 9 bits)
 // 2. Phrase token (dynamic x bits)
@@ -165,7 +165,7 @@ formatPhrase(
 //		- Union fileChar buffer with higher bits of ch.
 //      - call WriteToFile
 //		- Set fileChar buffer with lower bits of ch.
-//		- Verify if freePtr is pointing to 7 (means that we must call WriteToCall) because
+//		- Verify if freePtr is pointing to 7 (means that we must call WriteToFile) because
 //		  the buffer will be filled and must be written to destination.
 //
 // For Phrase token:
@@ -193,7 +193,7 @@ addBuffer(
 		fileChar |= ch >> shifts;
 		writeToFile();
 
-		fileChar = ( ch & getNecessaryMaskFor(shifts) ) << (CHAR_SIZE_BITS - shifts);
+		fileChar = ( ch & getMask(shifts) ) << (CHAR_SIZE_BITS - shifts);
 
 		if( freePtr == (CHAR_SIZE_BITS - 1) ) {
 			writeToFile();
@@ -227,14 +227,14 @@ addBuffer(
 			while( (remainingBits / CHAR_SIZE_BITS) >= 1 ) {
 				unsigned char shifts = (remainingBits - CHAR_SIZE_BITS);
 
-				fileChar = ( phraseCh & (getNecessaryMaskFor(CHAR_SIZE_BITS) << shifts) ) >> shifts;
+				fileChar = ( phraseCh & (getMask(CHAR_SIZE_BITS) << shifts) ) >> shifts;
 				writeToFile();
 				remainingBits -= CHAR_SIZE_BITS;
 			}
 
 			if(remainingBits > 0) {
 				
-				fileChar = ( phraseCh & getNecessaryMaskFor(remainingBits) ) << (CHAR_SIZE_BITS - remainingBits);
+				fileChar = ( phraseCh & getMask(remainingBits) ) << (CHAR_SIZE_BITS - remainingBits);
 			}
 		}
 
@@ -248,7 +248,7 @@ addBuffer(
 // Should be called only when algorithm is starting..
 //
 void 
-__stdcall 
+__forceinline 
 fillLookaheadBuffer(
 	__in PRingBufferChar buffer
 ) {
@@ -261,10 +261,10 @@ fillLookaheadBuffer(
 
 
 //
-// Before you have all data compressed you should call this method to write 
+// Before you have all data compressed, you should call this method to write 
 // the pak header within file.
 // Typically this method should be called after you compressed all the file because you must
-// have the tokens count, and you only know the count when you finish to compress the file.
+// have the tokens count, and you only know the count when you have finished to compress the file.
 //
 void 
 __stdcall 
@@ -291,6 +291,21 @@ writePakHeader() {
 	free(header);
 }
 
+//
+// This method must be called before codification.
+// Where we set the twNecessaryBits, lhNecessaryBits and phraseTokenBits.
+//
+void
+__forceinline
+setDynamicBits(
+	__in unsigned int buffer_size,
+	__in unsigned int lookahead_size
+) {
+	twNecessaryBits = getBits(buffer_size - lookahead_size);
+	lhNecessaryBits = getBits(lookahead_size) - 1;			// -1 is necessary because 00 represent 1 occurrence
+	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;			// +1 for the phrase highest bit
+}
+
 
 //
 // This method do the compression algorithm, that is: based on actual lookahead buffer,
@@ -304,18 +319,16 @@ doCompression(
 	__in const char* buffer_size, 
 	__in const char* lookahead_size
 ) {
+	unsigned int buf_size = atoi(buffer_size);
+	unsigned int lok_size = atoi(lookahead_size);
 
-	PRingBufferChar buffer = newInstance(atoi(buffer_size), atoi(lookahead_size));
-	boolean stopCompress = FALSE;
-	
 	int c = NULL;
 	char* itMax;
 	unsigned int itMaxOccurrences = 0;
+	boolean stopCompress = FALSE;
 
-	twNecessaryBits = getNecessaryBitsFor(buffer->buffer_size - buffer->lookahead_size);
-	lhNecessaryBits = getNecessaryBitsFor(buffer->lookahead_size) - 1;	// -1 is necessary because 00 represent 1 occurrence
-	phraseTokenBits = twNecessaryBits + lhNecessaryBits + 1;			// +1 for the phrase highest bit
-
+	PRingBufferChar buffer = newInstance(buf_size, lok_size);
+	setDynamicBits(buf_size, lok_size);
 	
 	//
 	// 1st Stage: Fill lookahead

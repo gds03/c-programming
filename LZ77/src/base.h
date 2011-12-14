@@ -53,7 +53,7 @@ unsigned long tokensCount;
 // 
 unsigned int  
 __forceinline 
-getNecessaryMaskFor(
+getMask(
 	__in unsigned int bits
 ) {
 	return (1 << bits) - 1;
@@ -64,7 +64,7 @@ getNecessaryMaskFor(
 //
 unsigned int 
 __forceinline 
-getNecessaryBitsFor(
+getBits(
 	__in unsigned int value
 ) {
 	unsigned int count = 0;
